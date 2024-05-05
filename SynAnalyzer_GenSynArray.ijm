@@ -7,20 +7,10 @@
  * all CtBP2 surfaces and to generate thumbnail views of a 1.5 um cube centered at the XYZ position as in  
  * Liberman, Wang, and Liberman 2011 (DOI:10.1523/JNEUROSCI.3389-10.2011).
  * 
- * LAST STOPPING POINT: Got the code to the point where a CSV file with XYZ positions can be loaded into the results table.
- * 
- * NEXT STEPS: 
- * 	1. Code for user to select the image to open and specify the channels to include but not slices
- * 	2. Create a directory for saving image thumbnails
- * 	3. Write code to iterate through the entries in the results table and for each entry:
- * 	    -> Make composite
- * 	    -> Flatten
- * 	    -> Save thumbnail
- * 	    -> Close thumbnail
- * 	    -> Close the substack
- *  4. Close the Z-stack 
- *  5. After all thumbnails are generated, open the folder of thumbnails and generate the array image 
- * 
+ * Data structure requirements: 
+ * - CSV must have these headers: "Position X," "Position Y," "Position Z,"
+ * - CSV files must be saved in fdPos
+ * - Images must be stored in fdIms	
  */
  
  /* 
@@ -28,57 +18,134 @@
  */
 
 // USER PARAMETERS
+// Specify the name of the folder in which the images are saved
+fdIms = "RawImages_63x";
+fdXYZ = "CtBP2Positions";
+ext = ".CtBP2.XYZ";
+
 // Specify the width and height of the desired bounding box based (in microns)
 tnW = 1.5;
 tnH = 1.5;
 tnZ = 1.5;
 
-// First test is to see if I can just load a CSV file that has the XYZ positions for each surface into the results table. 
 // *** HOUSEKEEPING ***
 run("Close All");										// Close irrelevant images
-dirData = "/Users/joyfranco/Dropbox (Partners HealthCare)/JF_Shared/Data/CodeDev/SynAnalyzer/";
-fnIm = "WSS_002.A.T2.02.Zs.4C.czi"		
-fnXYZ = "WSS_002.A.T2.02.Zs.4C.CtBP2Puncta.csv"
 
-// Load the XYZ positions for each CtBP2 surface
-setupXYZ(dirData+fnXYZ);
+// *** GET THE FILE TO ANALYZE ***
+Dialog.create("SynAnalyzer Bootup");
+Dialog.addMessage("This macro will open your z-stack of choice\n"+
+	"and create a thumbnail array of the synaptic regions\n"+
+	"based on the accompanying .csv file of XYZ coordinates of CtBP2\n"+
+	"puncta. Please see GitHub Repo for file structure requirements.\n"+
+	"Click 'OK' when you're ready to choose an image.");
+Dialog.show();
+impath = File.openDialog("Choose image to open");    	// Ask user to find file 
+open(impath);	
 
-// Load the Z-stack 
-//open(dirData);
-run("Bio-Formats Importer");
-// Get information about the stack
+// *** SETUP VARIABLES BASED ON FILENAME & PATH ***
+fn = File.name;											// Save the filename (with extension)
+fnBase = File.getNameWithoutExtension(impath);			// Get image name
+fnTN = fnBase+".TN.";									// Filenmae for max projection generated
+fnTnArr= fnBase+".ThumbnailArray";						// Filename for the thumbnail array 
+fnMD= fnBase+".Metadata.csv";						// Filename for metadata from the cropping calculation
+fnSCs= fnBase+".SynCounts.csv";						// Filename for metadata from the cropping calculation
+fnXYZ = fnBase+ext+".csv"
+wd = File.getDirectory(impath);							// Gets path to where the image is stored
+rootInd = lastIndexOf(wd, fdIms);					    // Gets index in string for where root directory ends
+root = substring(wd, 0, rootInd);						// Creates path to root directory
+dirXYZ = root+fdXYZ+"/";								// Location of CSV files to be loaded
+dirSA = root+"/SynAnalyzerResults/";				    // Main directory for all things generated via this macro
+dirTNs = dirSA+"TNs/";								    // Main directory for storing subdirectories of thumbnail images
+dirTR = dirTNs+fnBase+"/";								// Place to save thumbnails for this specific image
+dirArs = dirSA+"SynapseArrays/";						// Subdirectory for storing synapses arrays for every image in the prep 
+dirMPs = dirSA+"SynCounts/";						    // Subdirectory for storing csv files that have synapse counts for every image in the prep
+
+
+// *** SETUP DIRECTORIES IF APPLICABLE ***
+// Make directory for storing files related to this analysis
+//  only needs to be done once.
+if (!File.isDirectory(dirSA)) {
+	File.makeDirectory(dirSA);
+	File.makeDirectory(dirTNs);
+	File.makeDirectory(dirArs);
+	File.makeDirectory(dirMPs);
+	if (!File.isDirectory(dirTR)) {
+		File.makeDirectory(dirTR);
+	}
+}
+
+// *** BEGIN ANALYSIS ***
+
+// -- Allow the user to specify the channels to include
 Stack.getDimensions(width, height, channels, slices, frames);
-
-// Select the bare minimum number of channels and slices to include
-waitForUser("Examine the Z-stack and choose which images to include in the max projection.\n"+
-	"You will enter the specifications in the next dialog box.");
-	
-// Create dialog box	
 Dialog.create("Create Substack");
 Dialog.addMessage("Indicate the channels and slices to include in the analysis.");
 Dialog.addString("Channel Start","2");
-Dialog.addString("Channel End",channels);
+Dialog.addString("Channel End","3");
 Dialog.addString("Slice Start","1");
 Dialog.addString("Slice End", slices);
 Dialog.show();
-// Read in values from dialog box
+// -- Read in values from dialog box
 chStart = Dialog.getString();
 chEnd = Dialog.getString();
 slStart = Dialog.getString();
 slEnd = Dialog.getString();
-// Make the substack to spec and save
+// -- Make the substack to spec and save
 run("Make Substack...", "channels="+chStart+"-"+chEnd+" slices="+slStart+"-"+slEnd);
 close("\\Others");
-// Get updated information about the stack
+// -- Get updated information about the stack
 Stack.getDimensions(width, height, channels, slices, frames);
-
-// Get the pixel size and calculate the width and height for cropping
+// -- Get the pixel size and calculate the width and height for cropping (um/px)
 getVoxelSize(vxW, vxH, vxD, unit);
-print(vxD);
-cropW = round(tnW/vxW);
-cropH = round(tnH/vxH);
-cropD = round(tnZ/vxD);
 
+
+// -- Load the XYZ positions for each CtBP2 surface
+// -- Calculate the cropping information for each CtBP2 punctum
+setupXYZ(dirXYZ+fnXYZ, tnW, tnH, tnZ, vxD);
+
+
+// -- Subtract background from the entire z-stack
+run("Subtract Background...", "rolling=50 stack");
+
+// -- Allow the user to perform manual adjustments if necessary
+waitForUser("Peform any desired adjustments to the image (such as changing the LUT or autoscaling the pixel intensity),"+
+			"\nthen close this dialog box.");
+
+// -- Iterate through the puncta & generate thumbnails
+for (i = 0; i < nResults(); i++) {
+    // Ensure the right image is selected and others are closed
+    selectImage(fnBase+"-1.czi");
+    close("\\Others");
+    
+    // Generate a max projection for only the slices of interest 
+    zSt = getResult("ZStart", i);
+    zEnd = getResult("ZEnd", i);
+    run("Z Project...", "start="+zSt+" stop="+zEnd+" projection=[Max Intensity]");
+    // Create a cropping box for each punctum and add it to the ROI manager
+    x = getResult("CropX", i);
+    y = getResult("CropY", i);
+    run("Specify...", "width="+tnW+" height="+tnH+" x="+x+" y="+y+" slice=1 scaled");
+    run("Crop");
+    run("Make Composite");
+	run("Flatten");
+	saveAs("PNG", dirTR+fnTN+i+".png");
+	close(fnTN+i+".png");
+}
+
+run("Close All");
+
+for (i = 0; i < nResults(); i++) {
+    // Open the thumbnail
+    open(dirTR+fnTN+i+".png");
+}
+
+// Make montage
+nCols = 10;
+nRows = round(nResults/nCols);
+run("Images to Stack");
+run("Make Montage...", "columns="+nCols+" rows="+nRows+" scale=1");
+
+/*
 // Add cropping information to the results table
 for (i = 0; i < nResults(); i++) {
 	// Get XYZ positions as listed in the results table (um)
@@ -102,23 +169,15 @@ for (i = 0; i < nResults(); i++) {
 updateResults();
 
 // *** Code development test: make sure that the cropping boxes are accurate ***
-for (i = 10; i < nResults(); i++) {
-    // Generate a max projection for only the slices of interest
-    z = getResult("PosZ_vx", i);
-    zSt = z-round(cropD/2);
-    zEnd = z+round(cropD/2);
-    run("Z Project...", "start="+zSt+" stop="+zEnd+" projection=[Max Intensity]");
-    // Create a cropping box for each punctum and add it to the ROI manager
-    x = getResult("CropX_vx", i);
-    y = getResult("CropY_vx", i);
-    makeRectangle(x, y, cropW, cropH);
-    run("Crop");
-    exit;
+
 }
+
+
+*/
 
 // THIS FUNCTION READS IN A CSV FILE WITH ALL CTBP2 PUNCTA LOCATIONS AND LOADS THEM INTO THE RESULTS FILE
 //   IT ALSO COMPUTES THE NEAREST PIXEL XYZ 
-function setupXYZ(fPath){
+function setupXYZ(fPath, tnW, tnH, tnZ, vxD){
 // FX Reads in csv file and setsup info as a Results table
 	run("Clear Results");
 	lineseparator = "\n";
@@ -131,16 +190,16 @@ function setupXYZ(fPath){
 	cols=split(rows[0], cellseparator);
 	print(cols[0]);
 	if (cols[0]==" "){
-		k=2; // it is an ImageJ Results table, skip first column
+		k=1; // it is an ImageJ Results table, skip first column
 	}else{
-		k=1; // it is not a Results table, load all columns
+		k=0; // it is not a Results table, load all columns
 	}
 
 	// Iterates through all of the column headers and sets up the Results table to match
 	noPos = 3;
-	for (j=k; j<(noPos+k); j++){
-		setResult(cols[j],0,0);
-	}
+	//for (j=k; j<(noPos+k); j++){
+		//setResult(cols[j],0,0);
+	//}
 	
 	// Housekeeping to make sure no random values are stored in the table		
 	//run("Clear Results");
@@ -151,12 +210,25 @@ function setupXYZ(fPath){
 		pmInfo=split(rows[i], cellseparator);
 		// Iterate through each column in the row for this punctum & set the value for the respective column
 		//   based on the information in that specific row
-		for (j=k; j<(noPos+k); j++)
-			//setResult(cols[j],i-1,pmInfo[j]);
+		for (j=k; j<(noPos+k+1); j++){
+			setResult(cols[j],i-1,pmInfo[j]);
 			// By casting the actual value as an integer the position gets rounded to the nearest pixel
-			setResult(cols[j],i-1,parseInt(pmInfo[j]));
+			// Saving code as option: setResult(cols[j],i-1,parseInt(pmInfo[j]));
+		}
+		
+		// Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
+		cropX = getResult("Position X", i-1) - (tnW/2);
+		cropY = getResult("Position Y", i-1) - (tnH/2); 
+		setResult("CropX", i-1, cropX);
+		setResult("CropY", i-1, cropY);
+		
+		// Calculate and store the start and end slice numbers for the z-stack
+		zSt = round((getResult("Position Z", i-1)-(tnZ/2))*(1/vxD));
+		zEnd = round((getResult("Position Z", i-1)+(tnZ/2))*(1/vxD));	
+		setResult("ZStart", i-1, zSt);
+		setResult("ZEnd", i-1, zEnd);
 	}
-	
+	//Table.deleteRows(0, 0);
 	updateResults();
+	
 }
-
