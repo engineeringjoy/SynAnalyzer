@@ -11,6 +11,16 @@
  * - CSV must have these headers: "Position X," "Position Y," "Position Z,"
  * - CSV files must be saved in fdPos
  * - Images must be stored in fdIms	
+ * 
+ * Next steps: 
+ * 1. Setup the code for generating the indexed array from XYZ coords with IDs assigned and centers marked
+ * 2. Setup spreadsheet that allows for the user to enter information about each image:
+ * 	- Number/names of oprhans
+ * 	- Number/names of false positives
+ * 	- Flag doublets
+ * 3. Get this working for cases where the user has both CtBP2 and Homer1 puncta
+ * 4. Module for drawing the pillar-modiolar axis
+ * 5. Module for outputing finalized results.
  */
  
  /* 
