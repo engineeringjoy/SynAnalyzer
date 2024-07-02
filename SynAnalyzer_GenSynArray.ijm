@@ -1,26 +1,15 @@
 /*
  * SynAnalyzer_GenSynArray.ijm
  * Created by JFranco, 02 MAY 2024
- * Last update: 04 MAY 2024
+ * Last update: 02 JUL 2024
+ * 
+ * RETIRED - A newer version of the macro is being developed to add in functionality.
+ * See SynAnalyzer.ijm.
  * 
  * This .ijm macro is a work in progress. The ultimate goal is to read in an .xlsx file that contains the XYZ positions of 
  * all CtBP2 surfaces and to generate thumbnail views of a 1.5 um cube centered at the XYZ position as in  
  * Liberman, Wang, and Liberman 2011 (DOI:10.1523/JNEUROSCI.3389-10.2011).
  * 
- * Data structure requirements: 
- * - CSV must have these headers: "Position X," "Position Y," "Position Z,"
- * - CSV files must be saved in fdPos
- * - Images must be stored in fdIms	
- * 
- * Next steps: 
- * 1. Setup the code for generating the indexed array from XYZ coords with IDs assigned and centers marked
- * 2. Setup spreadsheet that allows for the user to enter information about each image:
- * 	- Number/names of oprhans
- * 	- Number/names of false positives
- * 	- Flag doublets
- * 3. Get this working for cases where the user has both CtBP2 and Homer1 puncta
- * 4. Module for drawing the pillar-modiolar axis
- * 5. Module for outputing finalized results.
  */
  
  /* 

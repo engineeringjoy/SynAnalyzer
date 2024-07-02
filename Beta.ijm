@@ -8,6 +8,7 @@
  *	The code below works when the .czi image is already open. 
  */
 
+/*
 run("Reslice [/]...", "output=0.310 start=Left");
 run("Z Project...", "projection=[Max Intensity]");
 
@@ -19,3 +20,4 @@ waitForUser("Draw the pillar-modilar axis across the\nbasolateral region of the 
 roiManager("Add");
 getLine(x1, y1, x2, y2, lineWidth);
 print("X-Start = "+x1);
+*/
