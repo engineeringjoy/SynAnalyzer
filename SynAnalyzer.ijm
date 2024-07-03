@@ -15,7 +15,14 @@
 ************************** SynAnalyzer.ijm ******************************
 * 						      MAIN MACRO
 */
- 
+// *** USER PRESETS ***
+// Default batch path
+defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/CodeDev/SynAnalyzerBatch/";
+// Thumbnail bounding box dimesions in um
+tnW = 1.5;
+tnH = 1.5;
+tnZ = 1.5;
+
 // *** HOUSEKEEPING ***
 run("Close All");
 run("Labels...", "color=white font=12 show use draw bold");
@@ -36,6 +43,7 @@ while (choice != "EXIT") {
 	}
 	choice = getChoice();
 }
+// *END MAIN MACRO*
 
 /* 
 ************************** FUNCTIONS ****************************** 						      
@@ -49,18 +57,20 @@ function initSynAnalyzer() {
 	"and create a thumbnail array of regions surrounding specific XYZ coordinates\n"+
 	"based on the accompanying .csv file(s).\n"+
 	"Please see GitHub Repo for file structure requirements.");
-	Dialog.addString("Enter the path to the batch folder:", "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/CodeDev/SynAnalyzerBatch/");
+	Dialog.addString("Enter the path to the batch folder:", defBP);
 	Dialog.show();
 	batchpath = Dialog.getString();
 	
 	// *** SETUP PATHNAMES FOR SUBDIRECTORIES ***
 	dirIms = batchpath+"RawImages/";
+	dirMD = batchpath+"Metadata/";
 	dirSI = batchpath+"SAR.SummaryImages/";
 	dirSA = batchpath+"SAR.SynArrays/";
 	dirPM = batchpath+"SAR.PillarModiolarMaps/";
 	dirAM = batchpath+"SAR.AnnotatedMPIs/";
-	dirAM = batchpath+"SAR.POIAnnotations/";            // Point of interest annotations - stores CSV of details for each surface
-	dirMD = batchpath+"Metadata/";
+	dirPA = batchpath+"SAR.POIAnnotations/";            // Point of interest annotations - stores CSV of details for each surface
+	dirSM = batchpath+"SAR.SubstackMPIs/";
+	dirTN = batchpath+"SAR.Thumbnails/";
 	fBM = "SynAnalyzerBatchMaster.csv";
 	
 	// *** GET LIST OF BATCH IMAGES ***
@@ -72,6 +82,8 @@ function initSynAnalyzer() {
 		File.makeDirectory(dirSA);
 		File.makeDirectory(dirPM);
 		File.makeDirectory(dirAM);
+		File.makeDirectory(dirSM);
+		File.makeDirectory(dirTN);
 		
 		// *** SETUP BATCH MASTER RESULTS TABLE ***
 		Table.create("SynAnalyzerBatchMaster.csv");
@@ -82,8 +94,9 @@ function initSynAnalyzer() {
 				Table.set("AvailXYZData", i, "TBD");
 				Table.set("ZStart", i, "TBD");
 				Table.set("ZEnd", i, "TBD");
+				Table.set("Included Channels", i, "TBD");
 				Table.set("Voxel Width (um)", i, "TBD");
-				Table.set("Voxel Height (um)", i, "TBD");
+				Table.set("Voxel Depth (um)", i, "TBD");
 				Table.set("BB X0", i, "TBD");
 				Table.set("BB X1", i, "TBD");
 				Table.set("BB Y0", i, "TBD");
@@ -121,8 +134,9 @@ function initSynAnalyzer() {
 					Table.set("Analyzed?", row, "No");
 					Table.set("ZStart", row, "TBD");
 					Table.set("ZEnd", row, "TBD");
+					Table.set("Included Channels", row, "TBD");
 					Table.set("Voxel Width (um)", row, "TBD");
-					Table.set("Voxel Height (um)", row, "TBD");
+					Table.set("Voxel Depth (um)", row, "TBD");
 					Table.set("BB X0", row, "TBD");
 					Table.set("BB X1", row, "TBD");
 					Table.set("BB Y0", row, "TBD");
@@ -252,7 +266,8 @@ function imVerification(i, filename, filelist, ims, batchpath){
     return exists;
 }
 
-// MAIN FUNCTION FOR ANALYZING AN IMAGE
+// ***** MAIN FUNCTION FOR ANALYZING AN IMAGE *****
+// PERFORM ANALYSIS OF ALL AVAILABLE XYZ DATASETS
 function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	// *** SET THE NUMBER OF ITERRUNS BASED ON DATA ***
 	if (adXYZ == "Both Pre- and Post-") {
@@ -268,20 +283,22 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	}
 	
 	// *** 1. OPEN THE IMAGE AND GET KEY INFO ***
-	getAnalysisInfo(batchpath, imName, imIndex);
-
+	//getAnalysisInfo(batchpath, imName, imIndex);
+	
 	// *** 2. ITERATE THROUGH AVAILABLE XYZ DATA SETS ***
 	for (i = 0; i < ir; i++) {
 		//2.1. Verify that the XYZs seem to match the image
-		match = verifyXYZMatch(batchpath, imName, fName, imIndex);
+		match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
 		if (match == "Yes"){
-			//2.2 Generate thumbnails
-			genThumbnails();
+			//2.2 Generate thumbnails if the XYZ data matches
+			analyzed = genThumbnails(batchpath, imName, fName[i], imIndex);
+		}else{
+			print("User decided XYZ data does not match. Suggest updating file and restarting macro.")
 		}
+		
 	}
-	*/
 }
-
+// ***** ANALYSIS RELATED FUNCTIONS *****
 // GET INFORMATION ABOUT HOW TO ANALYZE THIS IMAGE
 function getAnalysisInfo(batchpath, imName, imIndex){
 	// Housekeeping
@@ -289,6 +306,7 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	// Open the image and get basic information
 	open(batchpath+"RawImages/"+imName+".czi");
 	getVoxelSize(vxW, vxH, vxD, unit);
+	vxW = vxW+(0.0005);
 	Stack.getDimensions(width, height, channels, slices, frames);
 	// Allow the user to specify the channels to include
 	waitForUser("Review the image and choose slices to include. Enter these values in the next dialog box");
@@ -302,132 +320,202 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 		defaults[i] = 1;
 	}
 	// Setup and show the dialog box
-	Dialog.create("Create Substack");
+	Dialog.create("Get Analysis Info");
 	Dialog.addMessage("Indicate the channels and slices to include in the analysis.");
 	Dialog.addCheckboxGroup(channels, 2, labels, defaults);
 	Dialog.addString("Slice Start","1");
 	Dialog.addString("Slice End", slices);
 	Dialog.show();
 	// Get the information from the dialog box
-	include = newArray(channels)
 	inCount = 0;
+	include = newArray(channels);
 	for (i = 0; i < lengthOf(labels); i++) {
+		// Count the number of channels to include
 		if (Dialog.getCheckbox() == 1){
-			include[i] = "Yes";
 			inCount++;
-			print("Including channel "+toString(i))
+			include[i] = "Yes";
 		}else{
 			include[i] = "No";
-			print("Excluding channel "+toString(i))
-		}
-	}
-	// Make an array of the channels to include
-	chToInclude = newArray(inCount);
-	for (i = 0; i < lengthOf(include); i++) {
-		if (include[i] == "Yes") {
-			// Channel indexing starts at 1
-			chToInclude[i] = i+1;
 		}
 	}
 	slStart = Dialog.getString();
 	slEnd = Dialog.getString();
-	substac
-	//Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
-	run("Make Substack...", "channels="+chToInclude+" slices="+slStart+"-"+slEnd);
+	// Create an array that will be used to make the substack
+	chToInclude = newArray(inCount);
+	chCount = 0;
+	for (i = 0; i < channels; i++) {
+		if (include[i] == "Yes") {
+			// Channel indexing starts at 1
+			chToInclude[chCount] = i+1;
+			chCount++;
+		}
+	}
+	// Make an array of the channels to include
+	chStrArr = "["+String.join(chToInclude)+"]";
+	// Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
+	run("Make Substack...", "channels="+chStrArr+" slices="+slStart+"-"+slEnd);
 	run("Z Project...", "projection=[Max Intensity]");
 	run("Make Composite");
 	run("Flatten");
+	save(batchpath+"SAR.SubstackMPIs/"+imName+".SubstackMPI.tif");
 	selectImage(imName+".czi");
 	close();
 	selectImage(imName+"-1.czi");
 	close();
 	selectImage("MAX_"+imName+"-1.czi");
 	close();
-	//Have the user draw a rectangle around the region to analyze
+	// Have the user draw a rectangle around the region to analyze
 	waitForUser("Draw a rectangle around the hair cells to include in the analysis then press [t] to add to the ROI Manager.\n"+
 				"Start with the upper left corner and move down and right across the image."+
-				"Make sure the rectangle is still visible when pressing 'Ok' to proceed.");
+				"Make sure the rectangle is still visible when pressing 'Ok' to proceed."+
+				"Take note of the number of hair cells included in the analysis area.");
 	// Get the coordinates for the rectangle
 	Roi.getCoordinates(xpoints, ypoints);
 	Roi.remove;
+	// Have the user enter the number of hair cells included in the analysis
+	Dialog.create("Get Analysis Info");
+	Dialog.addMessage("Indicate the number of hair cells included in the analysis area.");
+	Dialog.addNumber("Number of Inner Hair Cells", 10);
+	Dialog.show();
+	nHCs = Dialog.getNumber();
 	// Update the Batch Master table
 	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
 	Table.set("ZStart", imIndex, slStart);
 	Table.set("ZEnd", imIndex, slEnd);
+	Table.set("Included Channels", imIndex, chStrArr);
 	Table.set("Voxel Width (um)", imIndex, vxW);
-	Table.set("Voxel Height (um)", imIndex, vxH);
+	Table.set("Voxel Depth (um)", imIndex, vxD);
 	Table.set("BB X0", imIndex, xpoints[0]);
 	Table.set("BB X1", imIndex, xpoints[1]);
 	Table.set("BB Y0", imIndex, ypoints[0]);
 	Table.set("BB Y2", imIndex, ypoints[2]);
+	Table.set("NumberOfHairCells", imIndex, nHCs);
+	Table.update;
 	Table.save(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
-	waitForUser;
-	// Test
-	makeRectangle(xpoints[0], ypoints[0], xpoints[1]-xpoints[0], ypoints[2]-ypoints[0]);
+	close("*");
 }
 
 // VERIFY THAT THE XYZ POSITIONS MATCH THE IMAGE
 function verifyXYZMatch(batchpath, imName, fName, imIndex){
-	open(batchpath+"RawImages/"+imName+".czi");
-	// Get parameters for substack
+	// Load the Batch Master to get the voxel dimensions
 	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
-	slStart = Table.get("ZStart", rowIndex);
-	slEnd = Table.get("ZEnd", rowIndex);
-	// Generate a max projection composite image that will be labelled with points of interest
-	run("Make Substack...", "slices="+slStart+"-"+slEnd);
-	run("Z Project...", "projection=[Max Intensity]");
-	run("Make Composite");
-	run("Flatten");
-	selectImage(imName+".czi");
-	close();
-	selectImage(imName+"-1.czi");
-	close();
-	selectImage("MAX_"+imName+"-1.czi");
-	close();
-	// Loat the XYZ points
-	Table.open(batchpath+"XYZCSVs/"+imName+".XYZ."+fName[i]+".csv");
-	// Calculate the conversion factor
-	getPixelSize(unit, pixelWidth, pixelHeight);
+	vxW = Table.get("Voxel Width (um)", imIndex);
+	vxD = Table.get("Voxel Depth (um)", imIndex);
+	// Open the substack MPI for labelling purposes
+	open(batchpath+"SAR.SubstackMPIs/"+imName+".SubstackMPI.tif");
+	// Load the XYZ points
+	Table.open(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
 	// Iterate through the rows of the XYZ table and add points to image
+	//  also adding converted positions in this step for ease 
 	tableRows = Table.size;
+	Table.sort("ID");
 	for (i = 0; i < tableRows; i++) {
-		xPos = (Table.get("Position X", i))*(1/pixelWidth);
-		yPos = (Table.get("Position Y", i))*(1/pixelWidth);
-		Table.set("Position X (pixels)", i, xPos);
-		Table.set("Position Y (pixels)", i, yPos);
+		xPos = (Table.get("Position X", i))*(1/vxW);
+		yPos = (Table.get("Position Y", i))*(1/vxW);
+		zPos = (Table.get("Position Z", i))*(1/vxD);
+		Table.set("Position X (voxels)", i, xPos);
+		Table.set("Position Y (voxels)", i, yPos);
+		Table.set("Position Z (voxels)", i, zPos);
+		Table.update;
 		makePoint(xPos, yPos, "small yellow hybrid");
 		roiManager("Add");
 	}
+	Table.save(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
 	roiManager("show all with labels");
 	// Ask the user to verify that the XYZ data matches the image
 	choiceArray = newArray("Yes", "No");
 	Dialog.create("Checkin");
-	Dialog.addRadioButtonGroup("Do these XYZ points match the image?", choiceArray, 2, 1, "Go");
+	Dialog.addRadioButtonGroup("Do these XYZ points match the image?", choiceArray, 2, 1, "Yes");
 	Dialog.show();
-	return Dialog.getRadioButton();
+	match = Dialog.getRadioButton();
+	close("*");
+	return match;
 }
 
 // GENERATE THUMBNAILS 
-function genThumbnails(batchpath, imName, imIndex) {
-	// *** SETUP THE ZSTACK FOR THE USER *** 
+function genThumbnails(batchpath, imName, fName, imIndex) {
+	// Open the raw image
 	open(batchpath+"RawImages/"+imName+".czi");
+	// -- Subtract background from the entire z-stack
+	run("Subtract Background...", "rolling=50 stack");
 	// Get parameters for substack
 	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
-	slStart = Table.get("ZStart", rowIndex);
-	slEnd = Table.get("ZEnd", rowIndex);
-	bbXZ = Table.get("BB X0", imIndex, xpoints[0]);
-	bbXO = Table.get("BB X1", imIndex, xpoints[1]);
-	bbYZ = Table.get("BB Y0", imIndex, ypoints[0]);
-	bbYT = Table.get("BB Y2", imIndex, ypoints[2]);
+	chStrArr = Table.getString("Included Channels", imIndex);
+	vxW = Table.get("Voxel Width (um)", imIndex);
+	vxD = Table.get("Voxel Depth (um)", imIndex);
+	slStart = Table.get("ZStart", imIndex);
+	slEnd = Table.get("ZEnd", imIndex);
+	bbXZ = Table.get("BB X0", imIndex);
+	bbXO = Table.get("BB X1", imIndex);
+	bbYZ = Table.get("BB Y0", imIndex);
+	bbYT = Table.get("BB Y2", imIndex);
 	// Generate a max projection composite image that will be labelled with points of interest
-	run("Make Substack...", "slices="+slStart+"-"+slEnd);
-	
-	// *** HAVE THE USER ADJUST THE BRIGHTNESS/CONTRAST *** 
+	run("Make Substack...", "channels="+chStrArr);
+	selectImage(imName+".czi");
+	close();
+	// Allow the user to make any adjustments to the display properties before proceeding 
 	waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
-	
-	// *** BEGIN THUMBNAIL GENERATION ***
-	// 1. Load the XYZs
-	// 2. Sort by ID to improve the match between indexing and spatial distribution
-	// 3. Iterate through each XYZ, assign an index, make/save thumbnail, update XYZ table
-	
+	// Load the XYZs
+	Table.open(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
+	// Setup the arrays for indexing the XYZ
+	nRows = -floor(-(Table.size/10));
+	arrLet = newArray("A","B","C","D","E","F","G","H","I","J","K");
+	arrNum = newArray(nRows);
+	for (i = 0; i < nRows; i++) {
+		arrNum[i]=i+1;
+	}
+	// Iterate through each XYZ, assign an index, make/save thumbnail, update XYZ table
+	inL = 0;
+	inN = 0;
+	for (i = 0; i < Table.size; i++) {
+		if (inL == lengthOf(arrLet)) {
+			inL = 0;
+			inN++;
+		}
+		inXYZ = arrLet[inL]+toString(arrNum[inN]);
+		// Get the XYZ info
+		// . X and Y should be in terms of voxels
+		// . Z needs to be in the slice number
+		posX = Table.get("Position X (voxels)", i);
+		posY = Table.get("Position Y (voxels)", i);
+		posZ = Table.get("Position Z (voxels)", i);
+		slZ = round(posZ);
+		//print(posX+" "+bbXZ+" "+bbXO+" "+posY+" "+bbYZ+" "+bbYT+" "+posZ+" "+slZ);
+		// First verify that the XYZ is within the user defined main bounding box
+		if ((posX >= bbXZ) && (posX <= bbXO)) {
+			if ((posY >= bbYZ) && (posY <= bbYT)) {
+				if ((slZ >= slStart) && (slZ <= slEnd)){
+				// Set the index for this XYZ
+				Table.set("XYZ_Index",i,inXYZ);
+				selectImage(imName+"-1.czi");
+			    // Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
+				cropX = posX - (tnW/vxW);
+				cropY = posY - (tnH/vxW); 
+				Table.set("CropX", i, cropX);
+				Table.set("CropY", i, cropY);
+				// Calculate and store the start and end slice numbers for the z-stack
+				zSt = round(slZ-(tnZ/2));
+				zEnd = round(slZ+(tnZ/2));	
+				Table.set("ZStart", i, zSt);
+				Table.set("ZEnd", i, zEnd);
+				Table.update;
+				// Make a max projection for just this XYZ
+				run("Make Composite");
+				run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
+				run("Flatten");
+				// Crop the region around the XYX
+			    //run("Specify...", "width="+tnW+" height="+tnH+" x="+cropX+" y="+cropY+" slice=1 scaled");
+			    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
+			    run("Crop");
+				 // Make and save the maximum projection
+				saveAs("PNG", batchpath+"SAR.Thumbnails/"+imName+".TN."+inXYZ+".png");
+				close(imName+".TN."+inXYZ+".png");
+				close();
+				}
+			}
+		}
+		inL++;
+	}
+	Table.save(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
+	return analyzed
 }
