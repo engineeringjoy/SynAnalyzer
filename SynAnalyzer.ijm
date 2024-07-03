@@ -17,7 +17,8 @@
 */
  
 // *** HOUSEKEEPING ***
-run("Close All");	
+run("Close All");
+run("Labels...", "color=white font=12 show use draw bold");
 
 // *** INITIALIZE SYNAPSE ANALYZER ***
 // Function will check if this is the first time the analysis has been run and setup
@@ -79,7 +80,14 @@ function initSynAnalyzer() {
 		        Table.set("ImageName", i, filelist[i]);
 				Table.set("Analyzed?", i, "No");
 				Table.set("AvailXYZData", i, "TBD");
-				Table.set("BBCoordinates", i, "TBD");        
+				Table.set("ZStart", i, "TBD");
+				Table.set("ZEnd", i, "TBD");
+				Table.set("Voxel Width (um)", i, "TBD");
+				Table.set("Voxel Height (um)", i, "TBD");
+				Table.set("BB X0", i, "TBD");
+				Table.set("BB X1", i, "TBD");
+				Table.set("BB Y0", i, "TBD");
+				Table.set("BB Y2", i, "TBD");
 				Table.set("NumberOfHairCells", i, "TBD");
 				Table.set("PreSynCentSynapses", i, "TBD");
 				Table.set("PostSynCentSynapses", i, "TBD");
@@ -111,7 +119,14 @@ function initSynAnalyzer() {
 					row = Table.size;
 					Table.set("ImageName",row, filelist[i]);
 					Table.set("Analyzed?", row, "No");
-					Table.set("BBCoordinates", row, "TBD");        
+					Table.set("ZStart", row, "TBD");
+					Table.set("ZEnd", row, "TBD");
+					Table.set("Voxel Width (um)", row, "TBD");
+					Table.set("Voxel Height (um)", row, "TBD");
+					Table.set("BB X0", row, "TBD");
+					Table.set("BB X1", row, "TBD");
+					Table.set("BB Y0", row, "TBD");
+					Table.set("BB Y2", row, "TBD");      
 					Table.set("NumberOfHairCells", row, "TBD");
 					Table.set("PreSynCentSynapses", row, "TBD");
 					Table.set("PostSynCentSynapses", row, "TBD");
@@ -227,7 +242,8 @@ function imVerification(i, filename, filelist, ims, batchpath){
 						// For all other cases, proceed with the analysis with the available XYZ data. 
 						print(imName+" exists and has "+adXYZ+"XYZ data associated with the image. Proceeding with analysis.");
 						// *** PROCEED TO ANALYSIS HERE ***
-						analyzeIm(batchpath, imName);
+						imIndex = j;
+						analyzeIm(batchpath, imName, adXYZ, imIndex);
 					}	
 				}
 			}
@@ -237,9 +253,124 @@ function imVerification(i, filename, filelist, ims, batchpath){
 }
 
 // MAIN FUNCTION FOR ANALYZING AN IMAGE
-function analyzeIm(batchpath, imName){
-	// *** PICK UP HERE
-	Proceed with analyzing an image - 
-	So what does that look like? What information is needed for that image? -Imagename, batchpath to make things easy, row in the batch master table.
+function analyzeIm(batchpath, imName, adXYZ, imIndex){
+	// *** SET THE NUMBER OF ITERRUNS BASED ON DATA ***
+	if (adXYZ == "Both Pre- and Post-") {
+		ir = 2;
+		fName = newArray("PreSyn","PostSyn");
+	}else {
+		ir =  1;
+		if (adXYZ=="Only Pre-"){
+			fName = newArray("PreSyn");
+		}else{
+			fName = newArray("PostSyn");
+		}
+	}
 	
+	// *** 1. OPEN THE IMAGE AND GET KEY INFO ***
+	getAnalysisInfo(batchpath, imName, imIndex);
+
+	// *** 2. ITERATE THROUGH AVAILABLE XYZ DATA SETS ***
+	for (i = 0; i < ir; i++) {
+		//2.1. Verify that the XYZs seem to match the image
+		match = verifyXYZMatch(batchpath, imName, fName, imIndex);
+		if (match == "Yes"){
+			//2.2 Generate thumbnails
+			// *** PICK BACK UP HERE ***
+		}
+	}
+	*/
+}
+
+// GET INFORMATION ABOUT HOW TO ANALYZE THIS IMAGE
+function getAnalysisInfo(batchpath, imName, imIndex){
+	roiManager("reset");
+	open(batchpath+"RawImages/"+imName+".czi");
+	//Allow the user to specify the channels to include
+	waitForUser("Review the image and choose slices to include. Enter these values in the next dialog box");
+	Stack.getDimensions(width, height, channels, slices, frames);
+	Dialog.create("Create Substack");
+	Dialog.addMessage("Indicate the slices to include in the analysis.");
+	Dialog.addString("Slice Start","1");
+	Dialog.addString("Slice End", slices);
+	Dialog.show();
+	slStart = Dialog.getString();
+	slEnd = Dialog.getString();
+	
+	//Get the pixel size and calculate the width and height for cropping (um/px)
+	getVoxelSize(vxW, vxH, vxD, unit);
+	
+	//Make a max proj to help user with visualizing surfaces
+	run("Make Substack...", "slices="+slStart+"-"+slEnd);
+	run("Z Project...", "projection=[Max Intensity]");
+	run("Make Composite");
+	run("Flatten");
+	selectImage(imName+".czi");
+	close();
+	selectImage(imName+"-1.czi");
+	close();
+	selectImage("MAX_"+imName+"-1.czi");
+	close();
+	//Have the user draw a rectangle around the region to analyze
+	waitForUser("Draw a rectangle around the hair cells to include in the analysis then press [t] to add to the ROI Manager.\n"+
+				"Start with the upper left corner and move down and right across the image."+
+				"Make sure the rectangle is still visible when pressing 'Ok' to proceed.");
+	// Get the coordinates for the rectangle
+	Roi.getCoordinates(xpoints, ypoints);
+	Roi.remove;
+	// Update the Batch Master table
+	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	Table.set("ZStart", imIndex, slStart);
+	Table.set("ZEnd", imIndex, slEnd);
+	Table.set("Voxel Width (um)", imIndex, vxW);
+	Table.set("Voxel Height (um)", imIndex, vxH);
+	Table.set("BB X0", imIndex, xpoints[0]);
+	Table.set("BB X1", imIndex, xpoints[1]);
+	Table.set("BB Y0", imIndex, ypoints[0]);
+	Table.set("BB Y2", imIndex, ypoints[2]);
+	Table.save(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	waitForUser;
+	// Test
+	makeRectangle(xpoints[0], ypoints[0], xpoints[1]-xpoints[0], ypoints[2]-ypoints[0]);
+}
+
+// VERIFY THAT THE XYZ POSITIONS MATCH THE IMAGE
+function verifyXYZMatch(batchpath, imName, fName, imIndex){
+	open(batchpath+"RawImages/"+imName+".czi");
+	// Get parameters for substack
+	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	slStart = Table.get("ZStart", rowIndex);
+	slEnd = Table.get("ZEnd", rowIndex);
+	// Generate a max projection composite image that will be labelled with points of interest
+	run("Make Substack...", "slices="+slStart+"-"+slEnd);
+	run("Z Project...", "projection=[Max Intensity]");
+	run("Make Composite");
+	run("Flatten");
+	selectImage(imName+".czi");
+	close();
+	selectImage(imName+"-1.czi");
+	close();
+	selectImage("MAX_"+imName+"-1.czi");
+	close();
+	// Loat the XYZ points
+	Table.open(batchpath+"XYZCSVs/"+imName+".XYZ."+fName[i]+".csv");
+	// Calculate the conversion factor
+	getPixelSize(unit, pixelWidth, pixelHeight);
+	// Iterate through the rows of the XYZ table and add points to image
+	tableRows = Table.size;
+	for (i = 0; i < tableRows; i++) {
+		xPos = (Table.get("Position X", i))*(1/pixelWidth);
+		yPos = (Table.get("Position Y", i))*(1/pixelWidth);
+		Table.set("Position X (pixels)", i, xPos);
+		Table.set("Position Y (pixels)", i, yPos);
+		makePoint(xPos, yPos, "small yellow hybrid");
+		roiManager("Add");
+	}
+	roiManager("show all with labels");
+	// Ask the user to verify that the XYZ data matches the image
+	choiceArray = newArray("Yes", "No");
+	Dialog.create("Checkin");
+	Dialog.addRadioButtonGroup("Do these XYZ points match the image?", choiceArray, 2, 1, "Go");
+	Dialog.show();
+	return Dialog.getRadioButton();
 }
