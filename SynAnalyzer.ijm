@@ -1,7 +1,7 @@
 /*
  * SynAnalyzer.ijm
  * Created by JFranco, 02 JUL 2024
- * Last update: 02 JUL 2024
+ * Last update: 03 JUL 2024
  * 
  * This .ijm macro is a work in progress. The ultimate goal is to read in an .xlsx file that contains the XYZ positions of 
  * all CtBP2 surfaces and to generate thumbnail views of a 1.5 um cube centered at the XYZ position as in  
@@ -276,7 +276,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 		match = verifyXYZMatch(batchpath, imName, fName, imIndex);
 		if (match == "Yes"){
 			//2.2 Generate thumbnails
-			// *** PICK BACK UP HERE ***
+			genThumbnails();
 		}
 	}
 	*/
@@ -284,24 +284,56 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 
 // GET INFORMATION ABOUT HOW TO ANALYZE THIS IMAGE
 function getAnalysisInfo(batchpath, imName, imIndex){
+	// Housekeeping
 	roiManager("reset");
+	// Open the image and get basic information
 	open(batchpath+"RawImages/"+imName+".czi");
-	//Allow the user to specify the channels to include
-	waitForUser("Review the image and choose slices to include. Enter these values in the next dialog box");
+	getVoxelSize(vxW, vxH, vxD, unit);
 	Stack.getDimensions(width, height, channels, slices, frames);
+	// Allow the user to specify the channels to include
+	waitForUser("Review the image and choose slices to include. Enter these values in the next dialog box");
+	// Setup Checkbox group based on z-stack dimensions
+	labels = newArray(channels);
+	defaults = newArray(channels);
+	for (i = 0; i < lengthOf(labels); i++) {
+		// Channel indexing starts at 1
+		labels[i] = "Channel "+toString(i+1);
+		// One = box is checked, Zero = unchecked
+		defaults[i] = 1;
+	}
+	// Setup and show the dialog box
 	Dialog.create("Create Substack");
-	Dialog.addMessage("Indicate the slices to include in the analysis.");
+	Dialog.addMessage("Indicate the channels and slices to include in the analysis.");
+	Dialog.addCheckboxGroup(channels, 2, labels, defaults);
 	Dialog.addString("Slice Start","1");
 	Dialog.addString("Slice End", slices);
 	Dialog.show();
+	// Get the information from the dialog box
+	include = newArray(channels)
+	inCount = 0;
+	for (i = 0; i < lengthOf(labels); i++) {
+		if (Dialog.getCheckbox() == 1){
+			include[i] = "Yes";
+			inCount++;
+			print("Including channel "+toString(i))
+		}else{
+			include[i] = "No";
+			print("Excluding channel "+toString(i))
+		}
+	}
+	// Make an array of the channels to include
+	chToInclude = newArray(inCount);
+	for (i = 0; i < lengthOf(include); i++) {
+		if (include[i] == "Yes") {
+			// Channel indexing starts at 1
+			chToInclude[i] = i+1;
+		}
+	}
 	slStart = Dialog.getString();
 	slEnd = Dialog.getString();
-	
-	//Get the pixel size and calculate the width and height for cropping (um/px)
-	getVoxelSize(vxW, vxH, vxD, unit);
-	
-	//Make a max proj to help user with visualizing surfaces
-	run("Make Substack...", "slices="+slStart+"-"+slEnd);
+	substac
+	//Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
+	run("Make Substack...", "channels="+chToInclude+" slices="+slStart+"-"+slEnd);
 	run("Z Project...", "projection=[Max Intensity]");
 	run("Make Composite");
 	run("Flatten");
@@ -373,4 +405,29 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	Dialog.addRadioButtonGroup("Do these XYZ points match the image?", choiceArray, 2, 1, "Go");
 	Dialog.show();
 	return Dialog.getRadioButton();
+}
+
+// GENERATE THUMBNAILS 
+function genThumbnails(batchpath, imName, imIndex) {
+	// *** SETUP THE ZSTACK FOR THE USER *** 
+	open(batchpath+"RawImages/"+imName+".czi");
+	// Get parameters for substack
+	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	slStart = Table.get("ZStart", rowIndex);
+	slEnd = Table.get("ZEnd", rowIndex);
+	bbXZ = Table.get("BB X0", imIndex, xpoints[0]);
+	bbXO = Table.get("BB X1", imIndex, xpoints[1]);
+	bbYZ = Table.get("BB Y0", imIndex, ypoints[0]);
+	bbYT = Table.get("BB Y2", imIndex, ypoints[2]);
+	// Generate a max projection composite image that will be labelled with points of interest
+	run("Make Substack...", "slices="+slStart+"-"+slEnd);
+	
+	// *** HAVE THE USER ADJUST THE BRIGHTNESS/CONTRAST *** 
+	waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
+	
+	// *** BEGIN THUMBNAIL GENERATION ***
+	// 1. Load the XYZs
+	// 2. Sort by ID to improve the match between indexing and spatial distribution
+	// 3. Iterate through each XYZ, assign an index, make/save thumbnail, update XYZ table
+	
 }
