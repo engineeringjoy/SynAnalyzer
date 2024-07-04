@@ -21,14 +21,3 @@ roiManager("Add");
 getLine(x1, y1, x2, y2, lineWidth);
 print("X-Start = "+x1);
 */
-tnW = 1.5;
-tnH = 1.5;
-tnZ = 1.5;
-vxW = 0.062;
-makeRectangle(2002, 259, (tnW/vxW), (tnH/vxW));
-run("Crop");
-// Add cross hairs for center
-makePoint(((tnW/vxW)/2), ((tnW/vxW)/2), "tiny yellow dot add");
-setFont("SansSerif",4);
-//makeText(id, 1, ((tnW/vxW)-2), "add");
-drawString(id, 1, ((tnW/vxW)-2));
