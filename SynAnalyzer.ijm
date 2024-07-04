@@ -19,8 +19,8 @@
 // Default batch path
 defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/CodeDev/SynAnalyzerBatch/";
 // Thumbnail bounding box dimesions in um
-tnW = 1.5;
-tnH = 1.5;
+tnW = 2;
+tnH = 2;
 tnZ = 1.5;
 
 // *** HOUSEKEEPING ***
@@ -64,12 +64,13 @@ function initSynAnalyzer() {
 	// *** SETUP PATHNAMES FOR SUBDIRECTORIES ***
 	dirIms = batchpath+"RawImages/";
 	dirMD = batchpath+"Metadata/";
+	dirAna = batchpath+"SAR.Analysis/";
 	dirSI = batchpath+"SAR.SummaryImages/";
 	dirSA = batchpath+"SAR.SynArrays/";
 	dirPM = batchpath+"SAR.PillarModiolarMaps/";
 	dirAM = batchpath+"SAR.AnnotatedMPIs/";
 	dirPA = batchpath+"SAR.POIAnnotations/";            // Point of interest annotations - stores CSV of details for each surface
-	dirSM = batchpath+"SAR.SubstackMPIs/";
+	dirRM = batchpath+"SAR.RawMPIs/";
 	dirTN = batchpath+"SAR.Thumbnails/";
 	fBM = "SynAnalyzerBatchMaster.csv";
 	
@@ -78,11 +79,12 @@ function initSynAnalyzer() {
 	
 	// *** CREATE SUBFOLDERS IF THEY DO NOT EXIST ***
 	if (!File.isDirectory(dirSI)) {
+		File.makeDirectory(dirAna);
 		File.makeDirectory(dirSI);
 		File.makeDirectory(dirSA);
 		File.makeDirectory(dirPM);
 		File.makeDirectory(dirAM);
-		File.makeDirectory(dirSM);
+		File.makeDirectory(dirRM);
 		File.makeDirectory(dirTN);
 		
 		// *** SETUP BATCH MASTER RESULTS TABLE ***
@@ -102,17 +104,23 @@ function initSynAnalyzer() {
 				Table.set("BB Y0", i, "TBD");
 				Table.set("BB Y2", i, "TBD");
 				Table.set("NumberOfHairCells", i, "TBD");
+				Table.set("PreSynXYZinROI", i, "TBD");
+				Table.set("PostSynXYZinROI", i, "TBD");
 				Table.set("PreSynCentSynapses", i, "TBD");
 				Table.set("PostSynCentSynapses", i, "TBD");
 				Table.set("PreSynCentDoublets", i, "TBD");
 				Table.set("PostSynCentDoublets", i, "TBD");
 				Table.set("PreSynOrphans", i, "TBD");
 				Table.set("PostSynOrphans", i, "TBD");
+				Table.set("PreSynGarbage", i, "TBD");
+				Table.set("PostSynGarbage", i, "TBD");
+				Table.set("PreSynWMarker", i, "TBD");
+				Table.set("PostSynWMarker", i, "TBD");
 		    } 
 		}
-		Table.save(dirMD+fBM);
+		Table.save(dirAna+fBM);
 	}else { 
-		Table.open(dirMD+fBM);
+		Table.open(dirAna+fBM);
 		// *** CHECK IF THERE ARE ADDITIONAL IMAGES THAT SHOULD BE ADDED ***
 		// Get the list of images currently in the table
 		ims = Table.getColumn("ImageName");
@@ -142,17 +150,21 @@ function initSynAnalyzer() {
 					Table.set("BB Y0", row, "TBD");
 					Table.set("BB Y2", row, "TBD");      
 					Table.set("NumberOfHairCells", row, "TBD");
+					Table.set("PreSynXYZinROI", row, "TBD");
+					Table.set("PostSynXYZinROI", row, "TBD");
 					Table.set("PreSynCentSynapses", row, "TBD");
 					Table.set("PostSynCentSynapses", row, "TBD");
 					Table.set("PreSynCentDoublets", row, "TBD");
 					Table.set("PostSynCentDoublets", row, "TBD");
-					Table.set("PreSynOrphans", row, "TBD");
-					Table.set("PostSynOrphans", row, "TBD");
+					Table.set("PreSynGarbage", row, "TBD");
+					Table.set("PostSynGarbage", row, "TBD");
+					Table.set("PreSynWMarker", row, "TBD");
+					Table.set("PostSynWMarker", row, "TBD");
 					Table.update;
 				}	
 		    }
 		}
-		Table.save(dirMD+fBM);
+		Table.save(dirAna+fBM);
 	}
 	return batchpath;
 }
@@ -247,7 +259,7 @@ function imVerification(i, filename, filelist, ims, batchpath){
 					// Update information about the analysis for this image
 					Table.set("AvailXYZData", j, adXYZ);
 					Table.update;
-					Table.save(batchpath+"Metadata/SynAnalyzerBatchMaster.csv");
+					Table.save(batchpath+"SAR.Analysis/SynAnalyzerBatchMaster.csv");
 					
 					if (adXYZ=="None"){
 						// The Batch Master list needs to be updated. Easiest is to have the user restart. 
@@ -281,6 +293,10 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			fName = newArray("PostSyn");
 		}
 	}
+	// Setup subfolders for storing thumbnails associated with this image
+	for (i = 0; i < lengthOf(fName); i++) {
+		File.makeDirectory(batchpath+"SAR.Thumbnails/"+imName+"."+fName[i]+"/");
+	}
 	
 	// *** 1. OPEN THE IMAGE AND GET KEY INFO ***
 	//getAnalysisInfo(batchpath, imName, imIndex);
@@ -290,12 +306,15 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 		//2.1. Verify that the XYZs seem to match the image
 		match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
 		if (match == "Yes"){
-			//2.2 Generate thumbnails if the XYZ data matches
+			// 2.2 Generate thumbnails if the XYZ data matches
 			analyzed = genThumbnails(batchpath, imName, fName[i], imIndex);
+			// 2.3 Have the user analyze the array if analysis was sucessfuly completed
+			if (analyzed == (fName[i] + " complete")){
+				countSyns(batchpath, imName, fName[i], imIndex);
+			}
 		}else{
 			print("User decided XYZ data does not match. Suggest updating file and restarting macro.")
 		}
-		
 	}
 }
 // ***** ANALYSIS RELATED FUNCTIONS *****
@@ -306,7 +325,6 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	// Open the image and get basic information
 	open(batchpath+"RawImages/"+imName+".czi");
 	getVoxelSize(vxW, vxH, vxD, unit);
-	vxW = vxW+(0.0005);
 	Stack.getDimensions(width, height, channels, slices, frames);
 	// Allow the user to specify the channels to include
 	waitForUser("Review the image and choose slices to include. Enter these values in the next dialog box");
@@ -321,7 +339,8 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	}
 	// Setup and show the dialog box
 	Dialog.create("Get Analysis Info");
-	Dialog.addMessage("Indicate the channels and slices to include in the analysis.");
+	Dialog.addMessage("Indicate the pre- and post- synaptic channels to use for thumbnail generation\n"+
+					  "and the slices to include in the analysis region.");
 	Dialog.addCheckboxGroup(channels, 2, labels, defaults);
 	Dialog.addString("Slice Start","1");
 	Dialog.addString("Slice End", slices);
@@ -353,15 +372,15 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	// Make an array of the channels to include
 	chStrArr = "["+String.join(chToInclude)+"]";
 	// Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
-	run("Make Substack...", "channels="+chStrArr+" slices="+slStart+"-"+slEnd);
+	//run("Make Substack...", "slices="+slStart+"-"+slEnd);
 	run("Z Project...", "projection=[Max Intensity]");
 	run("Make Composite");
 	run("Flatten");
-	save(batchpath+"SAR.SubstackMPIs/"+imName+".SubstackMPI.tif");
+	save(batchpath+"SAR.RawMPIs/"+imName+".RawMPI.tif");
 	selectImage(imName+".czi");
 	close();
-	selectImage(imName+"-1.czi");
-	close();
+	//selectImage(imName+"-1.czi");
+	//close();
 	selectImage("MAX_"+imName+"-1.czi");
 	close();
 	// Have the user draw a rectangle around the region to analyze
@@ -379,7 +398,7 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	Dialog.show();
 	nHCs = Dialog.getNumber();
 	// Update the Batch Master table
-	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	Table.set("ZStart", imIndex, slStart);
 	Table.set("ZEnd", imIndex, slEnd);
 	Table.set("Included Channels", imIndex, chStrArr);
@@ -391,18 +410,18 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	Table.set("BB Y2", imIndex, ypoints[2]);
 	Table.set("NumberOfHairCells", imIndex, nHCs);
 	Table.update;
-	Table.save(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	close("*");
 }
 
 // VERIFY THAT THE XYZ POSITIONS MATCH THE IMAGE
 function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	// Load the Batch Master to get the voxel dimensions
-	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	vxW = Table.get("Voxel Width (um)", imIndex);
 	vxD = Table.get("Voxel Depth (um)", imIndex);
 	// Open the substack MPI for labelling purposes
-	open(batchpath+"SAR.SubstackMPIs/"+imName+".SubstackMPI.tif");
+	open(batchpath+"SAR.RawMPIs/"+imName+".RawMPI.tif");
 	// Load the XYZ points
 	Table.open(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
 	// Iterate through the rows of the XYZ table and add points to image
@@ -439,7 +458,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	// -- Subtract background from the entire z-stack
 	run("Subtract Background...", "rolling=50 stack");
 	// Get parameters for substack
-	Table.open(batchpath+"/Metadata/"+"SynAnalyzerBatchMaster.csv");
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	chStrArr = Table.getString("Included Channels", imIndex);
 	vxW = Table.get("Voxel Width (um)", imIndex);
 	vxD = Table.get("Voxel Depth (um)", imIndex);
@@ -450,32 +469,20 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	bbYZ = Table.get("BB Y0", imIndex);
 	bbYT = Table.get("BB Y2", imIndex);
 	// Generate a max projection composite image that will be labelled with points of interest
-	run("Make Substack...", "channels="+chStrArr);
+	run("Make Substack...", "channels="+chStrArr+" slices="+slStart+"-"+slEnd);
 	selectImage(imName+".czi");
 	close();
 	// Allow the user to make any adjustments to the display properties before proceeding 
 	waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
 	// Load the XYZs
 	Table.open(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
-	// Setup the arrays for indexing the XYZ
-	nRows = -floor(-(Table.size/10));
-	arrLet = newArray("A","B","C","D","E","F","G","H","I","J","K");
-	arrNum = newArray(nRows);
-	for (i = 0; i < nRows; i++) {
-		arrNum[i]=i+1;
-	}
-	// Iterate through each XYZ, assign an index, make/save thumbnail, update XYZ table
-	inL = 0;
-	inN = 0;
+	// Iterate through XYZs and perform cropping
+	wbIn = 0; // counter for tracking the number of XYZs within bounds and cropped
 	for (i = 0; i < Table.size; i++) {
-		if (inL == lengthOf(arrLet)) {
-			inL = 0;
-			inN++;
-		}
-		inXYZ = arrLet[inL]+toString(arrNum[inN]);
 		// Get the XYZ info
 		// . X and Y should be in terms of voxels
 		// . Z needs to be in the slice number
+		id = Table.get("ID", i);
 		posX = Table.get("Position X (voxels)", i);
 		posY = Table.get("Position Y (voxels)", i);
 		posZ = Table.get("Position Z (voxels)", i);
@@ -485,17 +492,15 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 		if ((posX >= bbXZ) && (posX <= bbXO)) {
 			if ((posY >= bbYZ) && (posY <= bbYT)) {
 				if ((slZ >= slStart) && (slZ <= slEnd)){
-				// Set the index for this XYZ
-				Table.set("XYZ_Index",i,inXYZ);
 				selectImage(imName+"-1.czi");
 			    // Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
-				cropX = posX - (tnW/vxW);
-				cropY = posY - (tnH/vxW); 
+				cropX = posX - ((tnW/vxW)/2);
+				cropY = posY - ((tnH/vxW)/2); 
 				Table.set("CropX", i, cropX);
 				Table.set("CropY", i, cropY);
 				// Calculate and store the start and end slice numbers for the z-stack
-				zSt = round(slZ-(tnZ/2));
-				zEnd = round(slZ+(tnZ/2));	
+				zSt = round(slZ-((tnZ/vxD)/2));
+				zEnd = floor(slZ+((tnZ/vxD)/2));
 				Table.set("ZStart", i, zSt);
 				Table.set("ZEnd", i, zEnd);
 				Table.update;
@@ -507,15 +512,66 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 			    //run("Specify...", "width="+tnW+" height="+tnH+" x="+cropX+" y="+cropY+" slice=1 scaled");
 			    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
 			    run("Crop");
-				 // Make and save the maximum projection
-				saveAs("PNG", batchpath+"SAR.Thumbnails/"+imName+".TN."+inXYZ+".png");
-				close(imName+".TN."+inXYZ+".png");
-				close();
+			    // Add cross hairs for center
+			    makePoint(((tnW/vxW)/2), ((tnW/vxW)/2), "tiny yellow dot add");
+			    setFont("SansSerif",8, "antiliased");
+			    setColor(255, 255, 255);
+				drawString(id, 1, ((tnW/vxW)-1));
+				// Make and save the maximum projection
+				save(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/"+imName+".TN."+id+".png");
+				// Close images
+				close(imName+".TN."+id+".png");
+				close("MAX_"+imName+"-1.czi");
+				close("MAX_"+imName+"-2.czi");
+				wbIn++;
 				}
 			}
 		}
-		inL++;
 	}
+	// Generate the thumbnail array
+	close(imName+"-1.czi");
+	File.openSequence(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/");
+	nRows = -floor(-(wbIn/10));
+	run("Make Montage...", "columns=10 rows="+nRows+" scale=20");
+	save(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
+	close(imName+".SynArray."+fName+".png");
+	close(imName+"."+fName);
+	close("Montage");
+	// Complete analysis 
+	analyzed = fName+" complete";
 	Table.save(batchpath+"XYZCSVs/"+imName+".XYZ."+fName+".csv");
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	Table.set("Analyzed?", imIndex, analyzed);
+	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	return analyzed
+}
+
+// WALK THE USER THROUGH COUNTING SYNAPSES ON AN ARRAY
+function countSyns(batchpath, imName, fName, imIndex) {
+	// Open the array file
+	open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
+	// Create a dialog box for the user to enter values
+	Dialog.create("SynAnalyzer");
+	Dialog.addMessage("Review the synapse array and enter information for each category below:");
+	Dialog.addNumber("Number of doublets", 0);
+	Dialog.addNumber("Number of orphans", 0);
+	Dialog.addNumber("Number of garbage XYZs", 0);
+	Dialog.addNumber("Number of synapses with marker", 0);
+	Dialog.show();
+	nDs = Dialog.getNumber();
+	nOs = Dialog.getNumber();
+	nGs = Dialog.getNumber();
+	nWM = Dialog.getNumber();
+	// Open Batch Master and add information 
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	Table.set(fName+"CentDoublets", imIndex, nDs);
+	Table.set(fName+"CentOrphans", imIndex, nOs);
+	Table.set(fName+"CentGarbage", imIndex, nGs);
+	Table.set(fName+"CentWMarker", imIndex, nWM);
+	// Calculate the number of synapses based on information given
+	nT = Table.get(fName+"XYZinROI", imIndex);
+	nSyn = nT-nDs-nOs-nGs;
+	Table.set(fName+"CentSynapses", imIndex, nSyn);
+	Table.update;
+	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 }

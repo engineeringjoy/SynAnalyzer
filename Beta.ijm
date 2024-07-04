@@ -21,20 +21,14 @@ roiManager("Add");
 getLine(x1, y1, x2, y2, lineWidth);
 print("X-Start = "+x1);
 */
-
-// Setup the arrays for indexing the XYZ
-arrLet = newArray("A","B","C","D","E","F","G","H","I","J","K");
-arrNum = newArray(3);
-for (i = 0; i < 3; i++) {
-	arrNum[i]=i+1;
-}
-inL = 0;
-inN = 0;
-for (i = 0; i < 30; i++) {
-	if (inL == lengthOf(arrLet)) {
-		inL = 0;
-		inN++;
-	}
-	print("Index = "+arrLet[inL]+arrNum[inN]);
-	inL++;
-}
+tnW = 1.5;
+tnH = 1.5;
+tnZ = 1.5;
+vxW = 0.062;
+makeRectangle(2002, 259, (tnW/vxW), (tnH/vxW));
+run("Crop");
+// Add cross hairs for center
+makePoint(((tnW/vxW)/2), ((tnW/vxW)/2), "tiny yellow dot add");
+setFont("SansSerif",4);
+//makeText(id, 1, ((tnW/vxW)-2), "add");
+drawString(id, 1, ((tnW/vxW)-2));
