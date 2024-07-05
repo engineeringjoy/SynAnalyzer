@@ -1,7 +1,7 @@
 /*
  * SynAnalyzer.ijm
  * Created by JFranco, 02 JUL 2024
- * Last update: 03 JUL 2024
+ * Last update: 04 JUL 2024
  * 
  * This .ijm macro is a work in progress. The ultimate goal is to read in an .xlsx file that contains the XYZ positions of 
  * all CtBP2 surfaces and to generate thumbnail views of a 1.5 um cube centered at the XYZ position as in  
@@ -625,10 +625,9 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
 	// Save the annotated MPI
 	selectImage(imName+".RawMPI.tif");
-	makePoint(xPos, yPos, "tiny yellow dot add");
-	setFont("SansSerif",8, "antiliased");
-    setColor(255, 255, 255);
-	drawString(id, xPos, yPos);
+	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.png");
+	makeRectangle(431, 181, 158, 178);
+	run("Draw", "slice");
 	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.png");
 	// Generate the thumbnail array
 	close(imName+"-1.czi");
@@ -690,10 +689,9 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	getDimensions(width, height, channels, slices, frames);
 	getVoxelSize(vW, vH, vD, unit);
 	// Crop the z-stack accordingly
-	makeRectangle(xSt, 0, xEnd-xSt, height);
+	drawRect(xSt, 0, xEnd-xSt, height);
 	run("Crop");
 	Roi.remove;
-	waitForUser;
 	// Make the ortho projection
 	run("Reslice [/]...", "output="+vD+" start=Left flip");
 	run("Z Project...", "projection=[Max Intensity]");
