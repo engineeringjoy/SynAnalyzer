@@ -293,40 +293,88 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			fName = newArray("PostSyn");
 		}
 	}
-	// Setup subfolders for storing thumbnails associated with this image
-	for (i = 0; i < lengthOf(fName); i++) {
-		File.makeDirectory(batchpath+"SAR.Thumbnails/"+imName+"."+fName[i]+"/");
-	}
-	
 	// *** 1. OPEN THE IMAGE AND GET KEY INFO ***
-	//getAnalysisInfo(batchpath, imName, imIndex);
-	
-	// *** 2. ITERATE THROUGH AVAILABLE XYZ DATA SETS & GEN THUMBNAILS ***
-	match = newArray(lengthOf(fName));
-	for (i = 0; i < ir; i++) {
-		//2.1. Verify that the XYZs seem to match the image
-		match[i] = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
-		if (match[i] == "Yes"){
-			// 2.2 Generate thumbnails if the XYZ data matches
-			//genThumbnails(batchpath, imName, fName[i], imIndex);
-			// 2.3 Have the user analyze the array if analysis was sucessfuly completed
-			countSyns(batchpath, imName, fName[i], imIndex);
-			print("Analysis for "+imName+" "+fName[i]+" is complete.");
-			// Internal measure of steps completed
-			j=i+1;
-			// If all iterations have been completed, mark the file as completed
-			if (j==ir) {
-				Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
-				Table.set("Analyzed?",imIndex,"Yes");
-			}
+	match = "No";
+	// Check if the analysis has already been started
+	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+	test = Table.getString("ZStart", imIndex);
+	if (test != "TBD"){
+		// Check if the user wants to repeat the initialization process
+		Dialog.create("Check to proceed");
+		Dialog.addString("Analysis has been initialized. Repeat initialization?", "No");
+		Dialog.show();
+		check = Dialog.getString();
+		if (check == "Yes"){
+			getAnalysisInfo(batchpath, imName, imIndex);
+			match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
 		}else{
-			print("User decided XYZ data does not match. Suggest updating file and restarting macro.")
+			match="Yes";
+		}
+	}else{
+		// Image analysis info has not been acquired yet
+		getAnalysisInfo(batchpath, imName, imIndex);
+		match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
+	}
+	// *** 2. ITERATE THROUGH AVAILABLE XYZ DATA SETS & GEN THUMBNAILS ***
+	for (i = 0; i < ir; i++) {
+		if (match == "Yes"){
+			// 2.2 Generate thumbnails if the XYZ data matches
+			//  but check if the user wants to repeat thumbnail generation if it was already done.
+			if (File.exists(batchpath+"/SAR.Thumbnails/"+imName+"."+fName[i]+"/")){
+				Dialog.create("Check to proceed");
+				Dialog.addString("Thumbnails have been generated. Repeat thumbnail generation?", "No");
+				Dialog.show();
+				check = Dialog.getString();
+				if (check == "Yes"){
+					genThumbnails(batchpath, imName, fName[i], imIndex);
+				}
+			}else{
+				genThumbnails(batchpath, imName, fName[i], imIndex);
+			}
+			// 2.3 Have the user analyze the array if analysis was sucessfuly completed
+			//  but check if the user wants to repeat counting if it was already done.
+			// Check if the analysis has already been started
+			Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+			test = Table.getString(fName[i]+"Synapses", imIndex);
+			if (test != "TBD"){
+				Dialog.create("Check to proceed");
+				Dialog.addString("Synapses have been counted. Repeat counting?", "No");
+				Dialog.show();
+				check = Dialog.getString();
+				if (check == "Yes"){
+					countSyns(batchpath, imName, fName[i], imIndex);
+				}
+			}else{
+				countSyns(batchpath, imName, fName[i], imIndex);
+			}
+			// *** 3. PROCEED WITH PILLAR-MODIOLAR MAPPING FOR MATCHED DATASETS ***
+			//  but check if the user wants to repeat counting if it was already done.
+			// Check if the analysis has already been started
+			if (File.exists(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[i]+".png")){
+				Dialog.create("Check to proceed");
+				Dialog.addString("Pillar-modiolar mapping is complete. Repeat mapping?", "No");
+				Dialog.show();
+				check = Dialog.getString();
+				if (check == "Yes"){
+					complete = mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+				}
+			}else{
+				complete = mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+			}
+			j=i+1;
+		}else{
+			print("User decided XYZ data does not match."+
+				  "Update the file and restarting macro before proceeding.");
+			i=ir;
 		}
 	}
-	// *** 3. PROCEED WITH PILLAR-MODIOLAR MAPPING FOR MATCHED DATASETS ***
-	for (i=0; i<ir; i++) {
-		if (match[i]=="Yes"){
-			mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+	if (j==ir) {
+		if (complete == "Yes"){
+			print("Analysis for "+imName+" is complete.");
+			Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+			Table.set("Analyzed?",imIndex,complete);
+			Table.update;
+			Table.save(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 		}
 	}
 }
@@ -397,6 +445,7 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	selectImage("MAX_"+imName+"-1.czi");
 	close();
 	// Have the user draw a rectangle around the region to analyze
+	setTool("rectangle");
 	waitForUser("Draw a rectangle around the hair cells to include in the analysis then press [t] to add to the ROI Manager.\n"+
 				"Start with the upper left corner and move down and right across the image."+
 				"Make sure the rectangle is still visible when pressing 'Ok' to proceed."+
@@ -473,6 +522,8 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 
 // GENERATE THUMBNAILS 
 function genThumbnails(batchpath, imName, fName, imIndex) {
+	// Setup subfolders for storing thumbnails associated with this image
+	File.makeDirectory(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/");
 	// Open the substack MPI for labelling purposes
 	open(batchpath+"SAR.RawMPIs/"+imName+".RawMPI.tif");
 	// Open the raw image
@@ -505,21 +556,21 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 		// . X and Y should be in terms of voxels
 		// . Z needs to be in the slice number
 		id = Table.get("ID", i);
-		posX = Table.get("Position X (voxels)", i);
-		posY = Table.get("Position Y (voxels)", i);
-		posZ = Table.get("Position Z (voxels)", i);
-		slZ = round(posZ);
+		xPos = Table.get("Position X (voxels)", i);
+		yPos = Table.get("Position Y (voxels)", i);
+		zPos = Table.get("Position Z (voxels)", i);
+		slZ = round(zPos);
 		//print(posX+" "+bbXZ+" "+bbXO+" "+posY+" "+bbYZ+" "+bbYT+" "+posZ+" "+slZ);
 		// First verify that the XYZ is within the user defined main bounding box
-		if ((posX >= bbXZ) && (posX <= bbXO)) {
-			if ((posY >= bbYZ) && (posY <= bbYT)) {
+		if ((xPos >= bbXZ) && (xPos <= bbXO)) {
+			if ((yPos >= bbYZ) && (yPos <= bbYT)) {
 				if ((slZ >= slStart) && (slZ <= slEnd)){
 					// Update information to include the XYZ
 					Table.set("XYZinROI?", i, "Yes");
 					selectImage(imName+"-1.czi");
 				    // Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
-					cropX = posX - ((tnW/vxW)/2);
-					cropY = posY - ((tnH/vxW)/2); 
+					cropX = xPos - ((tnW/vxW)/2);
+					cropY = yPos - ((tnH/vxW)/2); 
 					Table.set("CropX", i, cropX);
 					Table.set("CropY", i, cropY);
 					// Calculate and store the start and end slice numbers for the z-stack
@@ -537,7 +588,10 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 				    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
 				    run("Crop");
 				    // Add cross hairs for center
-				    makePoint(((tnW/vxW)/2), ((tnW/vxW)/2), "tiny yellow dot add");
+					setFont("SansSerif",3, "antiliased");
+				    setColor(255, 255, 0);
+					drawString("+", ((tnW/vxW)/2), ((tnW/vxW)/2));
+				    //makePoint(((tnW/vxW)/2), ((tnW/vxW)/2), "tiny yellow cross add");
 				    setFont("SansSerif",8, "antiliased");
 				    setColor(255, 255, 255);
 					drawString(id, 1, ((tnW/vxW)-1));
@@ -550,10 +604,10 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 					wbIn++;
 					// Update the annotated MPI
 					selectImage(imName+".RawMPI.tif");
-					makePoint(posX, posY, "tiny yellow dot add");
+					makePoint(xPos, yPos, "tiny yellow dot add");
 					setFont("SansSerif",8, "antiliased");
 				    setColor(255, 255, 255);
-					drawString(id, posX, posY);
+					drawString(id, xPos, yPos);
 				}else{
 					// XYZ is not within Z bounds
 					Table.set("XYZinROI?", i, "No");
@@ -570,6 +624,11 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	// Save the XYZ data
 	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
 	// Save the annotated MPI
+	selectImage(imName+".RawMPI.tif");
+	makePoint(xPos, yPos, "tiny yellow dot add");
+	setFont("SansSerif",8, "antiliased");
+    setColor(255, 255, 255);
+	drawString(id, xPos, yPos);
 	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.png");
 	// Generate the thumbnail array
 	close(imName+"-1.czi");
@@ -619,12 +678,109 @@ function countSyns(batchpath, imName, fName, imIndex) {
 
 // MAP PILLAR-MODIOLAR POSITIONS FOR ALL XYZs within ROI 
 function mapPillarModiolar(batchpath, imName, fName, imIndex){
-	// Open the raw image
-	open(batchpath+"RawImages/"+imName+".czi");
+	close("*");
 	// Get the information about the ROI 
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	xSt = Table.get("BB X0", imIndex);
 	xEnd = Table.get("BB X1", imIndex);
 	zSt = Table.get("ZStart", imIndex);
 	zEnd = Table.get("ZEnd", imIndex);
+	// Open the raw image
+	open(batchpath+"RawImages/"+imName+".czi");
+	getDimensions(width, height, channels, slices, frames);
+	getVoxelSize(vW, vH, vD, unit);
+	// Crop the z-stack accordingly
+	makeRectangle(xSt, 0, xEnd-xSt, height);
+	run("Crop");
+	Roi.remove;
+	waitForUser;
+	// Make the ortho projection
+	run("Reslice [/]...", "output="+vD+" start=Left flip");
+	run("Z Project...", "projection=[Max Intensity]");
+	run("Make Composite");
+	getPixelSize(unit, pixW, pixH);
+	run("Flatten");
+	// Close unused images
+	close("\\Others");
+	// Have the user draw the p-m axis
+	setTool("line");
+	waitForUser("Draw the pillar-modilar axis across the\nbasolateral region of the hair cell.\n"+
+				"Make sure that the line is still visible before closing this window.");
+	getLine(x1, y1, x2, y2, lineWidth);
+	getDimensions(width, height, channels, slices, frames);
+	// Find the midpoint of the line
+	xMid = (x1+x2)/2;
+	yMid = (y1+y2)/2;
+	// Find the equation of the line
+	slope = (y2-y1)/(x2-x1);
+	int = y1-(slope*x1);
+	// Find the equation of the perpendicular line
+	pSlope = -1/slope;
+	pInt = yMid-(pSlope*xMid);
+	// Get the start and end points for the perpendicular line
+	xSt = 0;
+	xEnd = width;
+	ySt = pInt;
+	yEnd = (pSlope*xEnd)+pInt;
+	// Add annotations to the image
+	makePoint(xMid, yMid, "small yellow hybrid add");
+	setLineWidth(3);
+	setColor("yellow");
+	drawLine(x1, y1, x2, y2);
+	setColor("cyan");
+	drawLine(xSt, ySt, xEnd, yEnd);
+	// Iterate through the XYZs and assign P-M status based on position above or below the 
+	// . the apical-basal axis. 
+	// Open the Batch Master to get the number of valid XYZs
+	//Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	//nXYZs = Table.get(fName+"XYZinROI",imIndex);
+	// Open the XYZ data
+	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	nXYZs = Table.size;
+	for (i = 0; i < nXYZs; i++) {
+		// Check if the XYZ should be included
+		valid = Table.getString("XYZinROI?", i);
+		if (valid == "Yes") {
+			id = Table.get("ID", i);
+			// New coordinate system means original x-coords are now y
+			// . will need to add info in Readme about this
+			xPos = Table.get("Position Y (voxels)", i);
+			// The y-coord is weird because it was z-coord prior to the transformation
+			//  and the reslicing generates pixels in the new y-direction using interpolation.
+			// . So now thew new y-coordinate has to be scaled and subracted from the total image height. 
+			yPos = height-(Table.get("Position Z", i))/pixH;
+			// Now we determine if it's above or below the AB-axis
+			if (yPos > ((pSlope*xPos)+pInt)) {
+				// Add an annotation to the MPI for verification purposes
+				makePoint(xPos, yPos, "medium yellow dot add");
+				setFont("SansSerif",8, "antiliased");
+			    setColor(255, 255, 255);
+				drawString(id, xPos, yPos);
+				Table.set("PMStatus", i, "Pillar");
+			}else{
+				// Add an annotation to the MPI for verification purposes
+				makePoint(xPos, yPos, "medium cyan dot add");
+				setFont("SansSerif",8, "antiliased");
+			    setColor(255, 255, 255);
+				drawString(id, xPos, yPos);
+				Table.set("PMStatus", i, "Modiolar");
+			}
+		}
+		else {
+			Table.set("PMStatus", i, "Invalid XYZ");
+		}
+	}
+	// Check that these match before proceeding
+	Dialog.create("Check");
+	Dialog.addString("Do these labels match the image?", "No");
+	Dialog.show();
+	complete =  Dialog.getString();
+	// Only save the map if complete is "Yes"
+	if (complete == "Yes"){
+		// Save the annotated image
+		save(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
+		close("*");
+	}
+
+	return complete
 }
