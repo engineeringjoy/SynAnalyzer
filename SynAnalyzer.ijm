@@ -33,15 +33,16 @@ run("Labels...", "color=white font=12 show use draw bold");
 batchpath = initSynAnalyzer();
 
 // *** PROCEED WITH ANALYSIS ***
-choice = getChoice();
+choice = getUserChoice();
 while (choice != "EXIT") {
 	if (choice == "Batch") {
 		// Batch mode iterates through all unalyzed images until the user says to stop
 		runBatch(batchpath);
 	}else{
-		
+		// Specific Image mode allows the user to select a specific image and only analyzes that one.
+		runSpecific(batchpath);
 	}
-	choice = getChoice();
+	choice = getUserChoice();
 }
 // *END MAIN MACRO*
 
@@ -170,7 +171,7 @@ function initSynAnalyzer() {
 }
 
 // ALLOW USER TO CHOOSE HOW TO PROCEED
-function getChoice() {
+function getUserChoice() {
 	// *** ASK THE USER WHAT THEY WANT TO DO ***
 	choiceArray = newArray("Batch", "Specific Image", "EXIT");
 	Dialog.create("SynAnalyzer GetChoice");
@@ -197,6 +198,7 @@ function runBatch(batchpath) {
 	while (batch != "Stop") {
 		// *** GO THROUGH THE STEPS OF VALIDATION THEN PROCEEDING WITH ANALYSIS ***
 		// Verify that the image exists, has XYZ data, and then proceed with analysis
+		// . from within the verification function <- I don't love this and want to restructure in the future.
 		exists = imVerification(i, filelist[i], filelist, ims, batchpath);
 		// If true, then the image file was not in RawImages when the macro was started 
 		if (exists == "No") {
@@ -221,7 +223,33 @@ function runBatch(batchpath) {
 
 }
 
+// ANALYZE A SPECIFIC IMAGE CHOSEN BY THE USER
+function runSpecific(batchpath){
+	// Get the Batch Master list of images - This is how we will check if the 
+	// . chosen image has already been initialized, etc.
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	ims = Table.getColumn("ImageName");
+	// Get list of available files in the RawImages folder, just in case an image on Batch Master
+	// . has been moved and is no longer available.
+	filelist = getFileList(batchpath+"RawImages/");
+	Dialog.create("Choose a file to analyze")
+	Dialog.addChoice("Available Files", filelist);
+	Dialog.show();
+	file = Dialog.getChoice();
+	// Verify that the image exists, has XYZ data, and then proceed with analysis
+	exists = imVerification(0, file, filelist, ims, batchpath);
+	// If true, then the image file was not in RawImages when the macro was started 
+	if (exists == "No") {
+		// The Batch Master list needs to be updated. Easiest is to have the user restart. 
+		print(filelist[i]+" is not registered with Batch Master.\n"+
+			  "Recommend restarting the macro if you want to analyze this image.");
+	}
+}
+
 // VERIFY THAT THAT THE IMAGE IS VALID BEFORE CALLING ANALYSIS MODULE
+// i = index of filename in filelist, filelist = all files in RawImages, ims = all images in Batch Master
+// Can probably get rid of "i" but will need to double check that it doesn't break anything.
+// I think I can drop filelist as well
 function imVerification(i, filename, filelist, ims, batchpath){
 	// Check that the file is an acceptable format
     if (endsWith(filename, ".czi")) { 
@@ -590,7 +618,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 				    // Add cross hairs for center
 					setFont("SansSerif",3, "antiliased");
 				    setColor(255, 255, 0);
-					drawString("+", ((tnW/vxW)/2), ((tnW/vxW)/2));
+					drawString(".", ((tnW/vxW)/2), ((tnW/vxW)/2));
 				    //makePoint(((tnW/vxW)/2), ((tnW/vxW)/2), "tiny yellow cross add");
 				    setFont("SansSerif",8, "antiliased");
 				    setColor(255, 255, 255);
@@ -633,7 +661,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	close(imName+"-1.czi");
 	File.openSequence(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/");
 	nRows = -floor(-(wbIn/10));
-	run("Make Montage...", "columns=10 rows="+nRows+" scale=20");
+	run("Make Montage...", "columns=10 rows="+nRows+" scale=5");
 	save(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
 	close("*");
 	// Update Batch Master with number of XYZs in the ROI
@@ -689,9 +717,12 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	getDimensions(width, height, channels, slices, frames);
 	getVoxelSize(vW, vH, vD, unit);
 	// Crop the z-stack accordingly
-	drawRect(xSt, 0, xEnd-xSt, height);
+	//setTool("rectangle");
+	//drawRect(xSt, 0, xEnd-xSt, height);
+	makeRectangle(xSt, 0, xEnd-xSt, height);
+	//roiManager("add");
 	run("Crop");
-	Roi.remove;
+	//Roi.remove;
 	// Make the ortho projection
 	run("Reslice [/]...", "output="+vD+" start=Left flip");
 	run("Z Project...", "projection=[Max Intensity]");
@@ -770,7 +801,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	}
 	// Check that these match before proceeding
 	Dialog.create("Check");
-	Dialog.addString("Do these labels match the image?", "No");
+	Dialog.addString("Mark analysis as complete?", "Yes");
 	Dialog.show();
 	complete =  Dialog.getString();
 	// Only save the map if complete is "Yes"
