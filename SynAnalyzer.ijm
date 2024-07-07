@@ -1,14 +1,19 @@
 /*
  * SynAnalyzer.ijm
  * Created by JFranco, 02 JUL 2024
- * Last update: 04 JUL 2024
+ * Last update: 06 JUL 2024
  * 
- * This .ijm macro is a work in progress. The ultimate goal is to read in an .xlsx file that contains the XYZ positions of 
- * all CtBP2 surfaces and to generate thumbnail views of a 1.5 um cube centered at the XYZ position as in  
- * Liberman, Wang, and Liberman 2011 (DOI:10.1523/JNEUROSCI.3389-10.2011). 
+ * ** STILL IN BETA MODE ***
  * 
- * Status: Currently building off of SynAnalyzer_GenSynArray.ijm to add in the functionality
- * discussed by the Bclw team rather than just generating a synapse array.
+ * This ImageJ macro reads in a .csv file that was formatted using the SynAnalyzer Python notebook that converts
+ * .xlsx files from Imaris into the format required for this macro. From that .csv file, the macro walks a user
+ * through the process of analyzing pre- and post-synaptic regions as in Liberman, Wang, and Liberman 2011
+ * (DOI:10.1523/JNEUROSCI.3389-10.2011). 
+ * 
+ * Status: Macro is largely function and has been tested. There are still some functions that I want to add
+ * and additional tests that will be important to run before handing it off to users. README documentation
+ * and User tutorials stil need to be made. At some point the macro will be converted into a Plugin for those
+ * who prefer that approach. 
  */
  
 /* 
@@ -385,9 +390,19 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 				check = Dialog.getString();
 				if (check == "Yes"){
 					complete = mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+					genSummaryImage(batchpath, batchpath, imName, fName[i]);
+				}else {
+					genSummaryImage(batchpath, batchpath, imName, fName[i]);
+					// Check that these match before proceeding
+					Dialog.create("Check");
+					Dialog.addMessage("A new summary image has been generated.");
+					Dialog.addString("Mark analysis as complete?", "Yes");
+					Dialog.show();
+					complete =  Dialog.getString();
 				}
 			}else{
 				complete = mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+				genSummaryImage(batchpath, batchpath, imName, fName[i]);
 			}
 			j=i+1;
 		}else{
@@ -461,15 +476,15 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	// Make an array of the channels to include
 	chStrArr = "["+String.join(chToInclude)+"]";
 	// Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
-	//run("Make Substack...", "slices="+slStart+"-"+slEnd);
+	run("Make Substack...", "slices="+slStart+"-"+slEnd);
 	run("Z Project...", "projection=[Max Intensity]");
 	run("Make Composite");
 	run("Flatten");
 	save(batchpath+"SAR.RawMPIs/"+imName+".RawMPI.tif");
 	selectImage(imName+".czi");
 	close();
-	//selectImage(imName+"-1.czi");
-	//close();
+	selectImage(imName+"-1.czi");
+	close();
 	selectImage("MAX_"+imName+"-1.czi");
 	close();
 	// Have the user draw a rectangle around the region to analyze
@@ -531,7 +546,7 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 		Table.update;
 		// Add an annotation to the MPI for verification purposes
 		makePoint(xPos, yPos, "small yellow dot add");
-		setFont("SansSerif",8, "antiliased");
+		setFont("SansSerif",10, "antiliased");
 	    setColor(255, 255, 255);
 		drawString(id, xPos, yPos);
 	}
@@ -633,7 +648,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 					// Update the annotated MPI
 					selectImage(imName+".RawMPI.tif");
 					makePoint(xPos, yPos, "tiny yellow dot add");
-					setFont("SansSerif",8, "antiliased");
+					setFont("SansSerif",10, "antiliased");
 				    setColor(255, 255, 255);
 					drawString(id, xPos, yPos);
 				}else{
@@ -653,10 +668,10 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
 	// Save the annotated MPI
 	selectImage(imName+".RawMPI.tif");
-	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.png");
-	makeRectangle(431, 181, 158, 178);
+	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
+	makeRectangle(bbXZ, bbYZ, bbXO-bbXZ, bbYT-bbYZ);
 	run("Draw", "slice");
-	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.png");
+	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
 	// Generate the thumbnail array
 	close(imName+"-1.czi");
 	File.openSequence(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/");
@@ -812,4 +827,22 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	}
 
 	return complete
+}
+
+// Generate a summary image that has the main components from the analysis
+function genSummaryImage(batchpath, batchpath, imName, fName){
+	// Open the two MPIs and create a montage of those two first 
+	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
+	getDimensions(width, height, channels, slices, frames);
+	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
+	getDimensions(width, height, channels, slices, frames);
+	run("Images to Stack", "method=[Copy (top-left)] use");
+	run("Make Montage...", "columns=1 rows=2 scale=1 label");
+	// Need to save the montage as is, close it, then reopen it later
+	// Open the synapse array and the PM map. Turn these two into a montage
+	open("WSS_029.02.T3.01.Zs.4C.SynArray.PreSyn.png");
+	open("WSS_029.02.T3.01.Zs.4C.PMMap.PreSyn.png");
+	run("Images to Stack", "method=[Copy (center)] use");
+	run("Make Montage...", "columns=1 rows=2 scale=1");
+	// Now reopen the first montage and make the two into one. 
 }
