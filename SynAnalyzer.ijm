@@ -27,6 +27,8 @@ defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/
 tnW = 2;
 tnH = 2;
 tnZ = 1.5;
+// Annotated Image Size - Currently based on the output width of the SynArray
+annImW = 1650;
 
 // *** HOUSEKEEPING ***
 run("Close All");
@@ -256,6 +258,8 @@ function runSpecific(batchpath){
 // Can probably get rid of "i" but will need to double check that it doesn't break anything.
 // I think I can drop filelist as well
 function imVerification(i, filename, filelist, ims, batchpath){
+	// Ensure that the Batch Master is open and available
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	// Check that the file is an acceptable format
     if (endsWith(filename, ".czi")) { 
         // Boolean for tracking if the image is registered with the Batch Master
@@ -304,6 +308,20 @@ function imVerification(i, filename, filelist, ims, batchpath){
 						imIndex = j;
 						analyzeIm(batchpath, imName, adXYZ, imIndex);
 					}	
+				}else{
+					Dialog.create("Check to proceed");
+					Dialog.addString("Image has been analyzed. Repeat the process?", "Yes");
+					Dialog.show();
+					check = Dialog.getString();
+					if (check == "Yes"){
+						// Update information about the analysis for this image
+						Table.set("Analyzed?", j, "No");
+						Table.update;
+						Table.save(batchpath+"SAR.Analysis/SynAnalyzerBatchMaster.csv");
+						j=j-1;
+					}else{
+						print("User opted to skip re-analysis. Returning to menu.");
+					}
 				}
 			}
 		}
@@ -389,20 +407,29 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 				Dialog.show();
 				check = Dialog.getString();
 				if (check == "Yes"){
-					complete = mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+					mapPillarModiolar(batchpath, imName, fName[i], imIndex);
 					genSummaryImage(batchpath, batchpath, imName, fName[i]);
+					// Ask the user if they want to mark the analysis complete 
+					Dialog.create("Check");
+					Dialog.addString("Mark analysis as complete?", "Yes");
+					Dialog.show();
+					complete =  Dialog.getString();
 				}else {
 					genSummaryImage(batchpath, batchpath, imName, fName[i]);
-					// Check that these match before proceeding
+					// Ask the user if they want to mark the analysis complete 
 					Dialog.create("Check");
-					Dialog.addMessage("A new summary image has been generated.");
 					Dialog.addString("Mark analysis as complete?", "Yes");
 					Dialog.show();
 					complete =  Dialog.getString();
 				}
 			}else{
-				complete = mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+				mapPillarModiolar(batchpath, imName, fName[i], imIndex);
 				genSummaryImage(batchpath, batchpath, imName, fName[i]);
+				// Ask the user if they want to mark the analysis complete 
+				Dialog.create("Check");
+				Dialog.addString("Mark analysis as complete?", "Yes");
+				Dialog.show();
+				complete =  Dialog.getString();
 			}
 			j=i+1;
 		}else{
@@ -550,9 +577,20 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	    setColor(255, 255, 255);
 		drawString(id, xPos, yPos);
 	}
-	// Save the annotated raw MPI
-	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
+	// Save the updated Batch Master
 	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	// Save the annotated RAW MPI
+	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
+	// Rescale the image for visualization and summary image generation
+	// . Get the dimensions of the image
+	getDimensions(width, height, channels, slices, frames);
+	// . Calculate the scaling factor and output dimensions
+	scaleF = round(annImW/width);
+	outputW = scaleF*width;
+	outputH = scaleF*height;
+	// .  Scale the annotated image
+	run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+" interpolation=Bilinear average create");
+	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
 	// Ask the user to verify that the XYZ data matches the image
 	choiceArray = newArray("Yes", "No");
 	Dialog.create("Checkin");
@@ -666,11 +704,21 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	}
 	// Save the XYZ data
 	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
-	// Save the annotated MPI
+	// Save the annotated MPI as png to allow for annotating
 	selectImage(imName+".RawMPI.tif");
 	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
+	// Add the original ROI as defined by the user
 	makeRectangle(bbXZ, bbYZ, bbXO-bbXZ, bbYT-bbYZ);
 	run("Draw", "slice");
+	// Rescale the image for visualization and summary image generation
+	// . Get the dimensions of the image
+	getDimensions(width, height, channels, slices, frames);
+	// . Calculate the scaling factor and output dimensions
+	scaleF = round(annImW/width);
+	outputW = scaleF*width;
+	outputH = scaleF*height;
+	// .  Scale the annotated image
+	run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+" interpolation=Bilinear average create");
 	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
 	// Generate the thumbnail array
 	close(imName+"-1.czi");
@@ -814,35 +862,42 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 			Table.set("PMStatus", i, "Invalid XYZ");
 		}
 	}
-	// Check that these match before proceeding
-	Dialog.create("Check");
-	Dialog.addString("Mark analysis as complete?", "Yes");
-	Dialog.show();
-	complete =  Dialog.getString();
-	// Only save the map if complete is "Yes"
-	if (complete == "Yes"){
-		// Save the annotated image
-		save(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
-		close("*");
-	}
-
-	return complete
+	// Increase the size of the image to help with visualization
+	// . Get the dimensions of the image
+	getDimensions(width, height, channels, slices, frames);
+	// . Calculate the scaling factor and output dimensions
+	scaleF = round(annImW/width);
+	outputW = scaleF*width;
+	outputH = scaleF*height;
+	// .  Scale the annotated image
+	run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+" interpolation=Bilinear average create");
+	// Save the annotated image
+	save(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
+	waitForUser("Pillar-Modiolar mapping for "+imName+" is complete.");
+	close("*");
+	
 }
 
 // Generate a summary image that has the main components from the analysis
 function genSummaryImage(batchpath, batchpath, imName, fName){
-	// Open the two MPIs and create a montage of those two first 
+	dirSV = batchpath+"SAR.SummaryImages/";
+	svName = imName+".SummaryImage."+fName+".png";
+	// Generate the montage summary image - It must be done in two steps to avoid excess boundary space
+	// Open the two MPIs, create and save a montage of those two first 
 	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
-	getDimensions(width, height, channels, slices, frames);
 	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
-	getDimensions(width, height, channels, slices, frames);
-	run("Images to Stack", "method=[Copy (top-left)] use");
-	run("Make Montage...", "columns=1 rows=2 scale=1 label");
-	// Need to save the montage as is, close it, then reopen it later
+	run("Images to Stack", "use");
+	run("Make Montage...", "columns=1 rows=2 scale=1 font = 24 label");
+	close("Stack");
 	// Open the synapse array and the PM map. Turn these two into a montage
-	open("WSS_029.02.T3.01.Zs.4C.SynArray.PreSyn.png");
-	open("WSS_029.02.T3.01.Zs.4C.PMMap.PreSyn.png");
-	run("Images to Stack", "method=[Copy (center)] use");
-	run("Make Montage...", "columns=1 rows=2 scale=1");
-	// Now reopen the first montage and make the two into one. 
+	open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
+	open(batchpath+"SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
+	// Make a new stack of the montage and the two additional images
+	run("Images to Stack", "method=[Copy (top-left)] keep");
+	run("Make Montage...", "columns=1 rows=4 scale=1 font=24 label");
+	close("Stack");
+	// Save the Summary Image
+	save(dirSV+svName);
+	waitForUser("Summary image for "+imName+" has been generated and saved.");
+	close("*");
 }
