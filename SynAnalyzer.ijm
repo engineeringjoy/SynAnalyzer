@@ -258,6 +258,8 @@ function runSpecific(batchpath){
 // Can probably get rid of "i" but will need to double check that it doesn't break anything.
 // I think I can drop filelist as well
 function imVerification(i, filename, filelist, ims, batchpath){
+	// Update the user about the analysis stage
+	waitForUser("Proceeding with Image Verification");
 	// Ensure that the Batch Master is open and available
 	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	// Check that the file is an acceptable format
@@ -332,6 +334,8 @@ function imVerification(i, filename, filelist, ims, batchpath){
 // ***** MAIN FUNCTION FOR ANALYZING AN IMAGE *****
 // PERFORM ANALYSIS OF ALL AVAILABLE XYZ DATASETS
 function analyzeIm(batchpath, imName, adXYZ, imIndex){
+	// Update the user about the analysis stage
+	waitForUser("Proceeding with analysis for "+im);
 	// *** SET THE NUMBER OF ITERRUNS BASED ON DATA ***
 	if (adXYZ == "Both Pre- and Post-") {
 		ir = 2;
@@ -451,6 +455,8 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 // ***** ANALYSIS RELATED FUNCTIONS *****
 // GET INFORMATION ABOUT HOW TO ANALYZE THIS IMAGE
 function getAnalysisInfo(batchpath, imName, imIndex){
+	// Update the user about the analysis stage
+	waitForUser("Follow the prompts to add analysis parameters.");
 	// Housekeeping
 	roiManager("reset");
 	// Open the image and get basic information
@@ -548,6 +554,8 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 
 // VERIFY THAT THE XYZ POSITIONS MATCH THE IMAGE
 function verifyXYZMatch(batchpath, imName, fName, imIndex){
+	// Update the user about the analysis stage
+	waitForUser("Begining verification of XYZ dataset-image match.");
 	// Load the Batch Master to get the voxel dimensions
 	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	vxW = Table.get("Voxel Width (um)", imIndex);
@@ -603,6 +611,8 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 
 // GENERATE THUMBNAILS 
 function genThumbnails(batchpath, imName, fName, imIndex) {
+	// Update the user about the analysis stage
+	waitForUser("Beginning thumnail generation process.");
 	// Setup subfolders for storing thumbnails associated with this image
 	File.makeDirectory(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/");
 	// Open the substack MPI for labelling purposes
@@ -707,9 +717,6 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	// Save the annotated MPI as png to allow for annotating
 	selectImage(imName+".RawMPI.tif");
 	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
-	// Add the original ROI as defined by the user
-	makeRectangle(bbXZ, bbYZ, bbXO-bbXZ, bbYT-bbYZ);
-	run("Draw", "slice");
 	// Rescale the image for visualization and summary image generation
 	// . Get the dimensions of the image
 	getDimensions(width, height, channels, slices, frames);
@@ -717,8 +724,11 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	scaleF = round(annImW/width);
 	outputW = scaleF*width;
 	outputH = scaleF*height;
-	// .  Scale the annotated image
 	run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+" interpolation=Bilinear average create");
+	// Add the original ROI as defined by the user
+	makeRectangle(bbXZ*scaleF, bbYZ*scaleF, bbXO-bbXZ*scaleF, bbYT-bbYZ*scaleF);
+	run("Draw", "slice");
+	// .  Scale the annotated image
 	save(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
 	// Generate the thumbnail array
 	close(imName+"-1.czi");
@@ -737,6 +747,8 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 
 // WALK THE USER THROUGH COUNTING SYNAPSES ON AN ARRAY
 function countSyns(batchpath, imName, fName, imIndex) {
+	// Update the user about the analysis stage
+	waitForUser("Begining synapse counting process.");
 	// Open the array file
 	open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
 	// Create a dialog box for the user to enter values
@@ -769,6 +781,8 @@ function countSyns(batchpath, imName, fName, imIndex) {
 // MAP PILLAR-MODIOLAR POSITIONS FOR ALL XYZs within ROI 
 function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	close("*");
+	// Update the user about the analysis stage
+	waitForUser("Beginning pillar-modiolar mapping.");
 	// Get the information about the ROI 
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	xSt = Table.get("BB X0", imIndex);
@@ -880,6 +894,8 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 
 // Generate a summary image that has the main components from the analysis
 function genSummaryImage(batchpath, batchpath, imName, fName){
+	// Update the user about the analysis stage
+	waitForUser("Generating summary image.");
 	dirSV = batchpath+"SAR.SummaryImages/";
 	svName = imName+".SummaryImage."+fName+".png";
 	// Generate the montage summary image - It must be done in two steps to avoid excess boundary space
@@ -887,14 +903,14 @@ function genSummaryImage(batchpath, batchpath, imName, fName){
 	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
 	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
 	run("Images to Stack", "use");
-	run("Make Montage...", "columns=1 rows=2 scale=1 font = 24 label");
+	run("Make Montage...", "columns=1 rows=2 scale=1 font = 48 label");
 	close("Stack");
 	// Open the synapse array and the PM map. Turn these two into a montage
 	open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
 	open(batchpath+"SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
 	// Make a new stack of the montage and the two additional images
-	run("Images to Stack", "method=[Copy (top-left)] keep");
-	run("Make Montage...", "columns=1 rows=4 scale=1 font=24 label");
+	run("Images to Stack", "method=[Copy (center)]");
+	run("Make Montage...", "columns=1 rows=3 scale=1");
 	close("Stack");
 	// Save the Summary Image
 	save(dirSV+svName);
