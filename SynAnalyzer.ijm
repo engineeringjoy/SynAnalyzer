@@ -86,7 +86,7 @@ function initSynAnalyzer() {
 	filelist = getFileList(dirIms);
 	
 	// *** CREATE SUBFOLDERS IF THEY DO NOT EXIST ***
-	if (!File.isDirectory(dirSI)) {
+	if (!File.isDirectory(dirAna)) {
 		File.makeDirectory(dirAna);
 		File.makeDirectory(dirSI);
 		File.makeDirectory(dirSA);
@@ -335,7 +335,7 @@ function imVerification(i, filename, filelist, ims, batchpath){
 // PERFORM ANALYSIS OF ALL AVAILABLE XYZ DATASETS
 function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	// Update the user about the analysis stage
-	waitForUser("Proceeding with analysis for "+im);
+	waitForUser("Image & XYZ datasets have been verified. Proceeding with analysis for "+imName);
 	// *** SET THE NUMBER OF ITERRUNS BASED ON DATA ***
 	if (adXYZ == "Both Pre- and Post-") {
 		ir = 2;
@@ -612,7 +612,7 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 // GENERATE THUMBNAILS 
 function genThumbnails(batchpath, imName, fName, imIndex) {
 	// Update the user about the analysis stage
-	waitForUser("Beginning thumnail generation process.");
+	waitForUser("Beginning thumbnail generation process.");
 	// Setup subfolders for storing thumbnails associated with this image
 	File.makeDirectory(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/");
 	// Open the substack MPI for labelling purposes
@@ -640,6 +640,24 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
 	// Load the XYZs & allow the user to specify the sorting order
 	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	labels = newArray("ID", "Volume");
+	defaults = newArray("0", "1");
+	Dialog.create("Get Sorting Order");
+	Dialog.addMessage("Indicate the desired sorting order for thumbnail generation.");
+	Dialog.addCheckboxGroup(2, 2, labels, defaults);
+	Dialog.show();
+	chkID = Dialog.getCheckbox();
+	chkVol = Dialog.getCheckbox();
+	if ((chkID == 1) && (chkVol == 0)){
+		sort = "ID";
+	}else if ((chkID == 0) && (chkVol == 1)){
+		sort = "Volume_um3";
+	}else {
+		print("Sorting order error: both or no options selected.\n"+
+			  "Defaulting to sorting by volume.");
+		sort = "Volume_um3";
+	}
+	Table.sort(sort);
 	// Iterate through XYZs and perform cropping
 	wbIn = 0; // counter for tracking the number of XYZs within bounds and cropped
 	for (i = 0; i < Table.size; i++) {
@@ -647,9 +665,12 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 		// . X and Y should be in terms of voxels
 		// . Z needs to be in the slice number
 		id = Table.get("ID", i);
+		print(i);
+		print(id);
 		xPos = Table.get("Position X (voxels)", i);
 		yPos = Table.get("Position Y (voxels)", i);
 		zPos = Table.get("Position Z (voxels)", i);
+		vol = Table.get("Volume_um3", i);
 		slZ = round(zPos);
 		//print(posX+" "+bbXZ+" "+bbXO+" "+posY+" "+bbYZ+" "+bbYT+" "+posZ+" "+slZ);
 		// First verify that the XYZ is within the user defined main bounding box
@@ -687,7 +708,12 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 				    setColor(255, 255, 255);
 					drawString(id, 1, ((tnW/vxW)-1));
 					// Make and save the maximum projection
-					save(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/"+imName+".TN."+id+".png");
+					if (sort == "Volume_um3"){
+						save(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/"+imName+".TN."+i+"."+id+".png");
+					}else{
+						save(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/"+imName+".TN."+id+".png");
+					}
+					
 					// Close images
 					close(imName+".TN."+id+".png");
 					close("MAX_"+imName+"-1.czi");
