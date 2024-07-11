@@ -638,7 +638,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	close();
 	// Allow the user to make any adjustments to the display properties before proceeding 
 	waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
-	// Load the XYZs
+	// Load the XYZs & allow the user to specify the sorting order
 	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
 	// Iterate through XYZs and perform cropping
 	wbIn = 0; // counter for tracking the number of XYZs within bounds and cropped
