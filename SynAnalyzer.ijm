@@ -104,7 +104,8 @@ function initSynAnalyzer() {
 				Table.set("AvailXYZData", i, "TBD");
 				Table.set("ZStart", i, "TBD");
 				Table.set("ZEnd", i, "TBD");
-				Table.set("Included Channels", i, "TBD");
+				Table.set("Synaptic Marker Channels", i, "TBD");
+				Table.set("Terminal Marker Channels", i, "TBD");
 				Table.set("Voxel Width (um)", i, "TBD");
 				Table.set("Voxel Depth (um)", i, "TBD");
 				Table.set("BB X0", i, "TBD");
@@ -150,7 +151,8 @@ function initSynAnalyzer() {
 					Table.set("Analyzed?", row, "No");
 					Table.set("ZStart", row, "TBD");
 					Table.set("ZEnd", row, "TBD");
-					Table.set("Included Channels", row, "TBD");
+					Table.set("Synaptic Marker Channels", row, "TBD");
+					Table.set("Terminal Marker Channels", row, "TBD");
 					Table.set("Voxel Width (um)", row, "TBD");
 					Table.set("Voxel Depth (um)", row, "TBD");
 					Table.set("BB X0", row, "TBD");
@@ -402,7 +404,8 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			}else{
 				countSyns(batchpath, imName, fName[i], imIndex);
 			}
-			// *** 3. PROCEED WITH PILLAR-MODIOLAR MAPPING FOR MATCHED DATASETS ***
+			
+			// *** 4. PROCEED WITH PILLAR-MODIOLAR MAPPING FOR MATCHED DATASETS ***
 			//  but check if the user wants to repeat counting if it was already done.
 			// Check if the analysis has already been started
 			if (File.exists(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[i]+".png")){
@@ -442,6 +445,14 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			i=ir;
 		}
 	}
+	// ANALYZE AFFERENT TERMINALS ***
+	// But first verify that the user wants to proceed
+	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+	terCheck = Table.get("Terminal Marker Channels", imIndex, terChArr);
+	if (terCheck == "Yes") {
+		countTerMarker(batchpath, imName, imIndex);	
+	}
+	
 	if (j==ir) {
 		if (complete == "Yes"){
 			print("Analysis for "+imName+" is complete.");
@@ -465,7 +476,7 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	Stack.getDimensions(width, height, channels, slices, frames);
 	// Allow the user to specify the channels to include
 	waitForUser("Review the image and choose slices to include. Enter these values in the next dialog box");
-	// Setup Checkbox group based on z-stack dimensions
+	// Setup Checkbox Group to use in dialog box based on the image information
 	labels = newArray(channels);
 	defaults = newArray(channels);
 	for (i = 0; i < lengthOf(labels); i++) {
@@ -474,40 +485,74 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 		// One = box is checked, Zero = unchecked
 		defaults[i] = 1;
 	}
-	// Setup and show the dialog box
+	// Ask the user to specify the synaptic marker channels
 	Dialog.create("Get Analysis Info");
-	Dialog.addMessage("Indicate the pre- and post- synaptic channels to use for thumbnail generation\n"+
+	Dialog.addMessage("Indicate the pre- and post- synaptic channels\n"+
 					  "and the slices to include in the analysis region.");
 	Dialog.addCheckboxGroup(channels, 2, labels, defaults);
 	Dialog.addString("Slice Start","1");
 	Dialog.addString("Slice End", slices);
 	Dialog.show();
-	// Get the information from the dialog box
-	inCount = 0;
+	//   Get the information from the dialog box
+	synChCount = 0;
 	include = newArray(channels);
 	for (i = 0; i < lengthOf(labels); i++) {
 		// Count the number of channels to include
 		if (Dialog.getCheckbox() == 1){
-			inCount++;
+			synChCount++;
 			include[i] = "Yes";
 		}else{
 			include[i] = "No";
 		}
 	}
-	slStart = Dialog.getString();
-	slEnd = Dialog.getString();
-	// Create an array that will be used to make the substack
-	chToInclude = newArray(inCount);
+	// Make an array of the channels to include
+	synCh = newArray(synChCount);
 	chCount = 0;
 	for (i = 0; i < channels; i++) {
 		if (include[i] == "Yes") {
 			// Channel indexing starts at 1
-			chToInclude[chCount] = i+1;
+			synCh[synChCount] = i+1;
 			chCount++;
 		}
 	}
-	// Make an array of the channels to include
-	chStrArr = "["+String.join(chToInclude)+"]";
+	synChArr = "["+String.join(synCh)+"]";
+	// Get the information about which slices to include
+	slStart = Dialog.getString();
+	slEnd = Dialog.getString();
+	// Ask the user to specify the afferent terminal markers
+	Dialog.create("Get Analysis Info");
+	Dialog.addString("Include terminal marker in analysis?", "Yes");
+	Dialog.addMessage("If applicable, indicate the channels to use for afferent terminal marker analysis.");
+	Dialog.addCheckboxGroup(channels, 2, labels, defaults);
+	Dialog.show();
+	terCheck = Dialog.getString();
+	if (terCheck == "Yes"){
+		//   Get the information from the dialog box
+		terChCount = 0;
+		include = newArray(channels);
+		for (i = 0; i < lengthOf(labels); i++) {
+			// Count the number of channels to include
+			if (Dialog.getCheckbox() == 1){
+				terChCount++;
+				include[i] = "Yes";
+			}else{
+				include[i] = "No";
+			}
+		}
+		// Make an array of the channels to include
+		terCh = newArray(terChCount);
+		chCount = 0;
+		for (i = 0; i < channels; i++) {
+			if (include[i] == "Yes") {
+				// Channel indexing starts at 1
+				terCh[terChCount] = i+1;
+				chCount++;
+			}
+		}
+		terChArr = "["+String.join(terCh)+"]";
+		Table.set("Terminal Marker Channels", imIndex, terChArr);
+		Table.update;
+	}
 	// Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
 	run("Make Substack...", "slices="+slStart+"-"+slEnd);
 	run("Z Project...", "projection=[Max Intensity]");
@@ -539,7 +584,7 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	Table.set("ZStart", imIndex, slStart);
 	Table.set("ZEnd", imIndex, slEnd);
-	Table.set("Included Channels", imIndex, chStrArr);
+	Table.set("Synaptic Marker Channels", imIndex, synChArr);
 	Table.set("Voxel Width (um)", imIndex, vxW);
 	Table.set("Voxel Depth (um)", imIndex, vxD);
 	Table.set("BB X0", imIndex, xpoints[0]);
@@ -623,7 +668,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	run("Subtract Background...", "rolling=50 stack");
 	// Get parameters for substack
 	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
-	chStrArr = Table.getString("Included Channels", imIndex);
+	synChArr = Table.getString("Synaptic Marker Channels", imIndex);
 	vxW = Table.get("Voxel Width (um)", imIndex);
 	vxD = Table.get("Voxel Depth (um)", imIndex);
 	slStart = Table.get("ZStart", imIndex);
@@ -633,7 +678,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	bbYZ = Table.get("BB Y0", imIndex);
 	bbYT = Table.get("BB Y2", imIndex);
 	// Generate a max projection composite image that will be labelled with points of interest
-	run("Make Substack...", "channels="+chStrArr+" slices="+slStart+"-"+slEnd);
+	run("Make Substack...", "channels="+synChArr+" slices="+slStart+"-"+slEnd);
 	selectImage(imName+".czi");
 	close();
 	// Allow the user to make any adjustments to the display properties before proceeding 
@@ -916,6 +961,104 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	waitForUser("Pillar-Modiolar mapping for "+imName+" is complete.");
 	close("*");
 	
+}
+
+// Generate a thumbnail array using only the terminal marker channel and allow the user to review
+function countTerMarker(batchpath, imName, imIndex);	
+	// Setup subfolders for storing thumbnails associated with this image
+	File.makeDirectory(batchpath+"SAR.Thumbnails/"+imName+".Terminals/");
+	// Open the raw image
+	open(batchpath+"RawImages/"+imName+".czi");
+	// -- Subtract background from the entire z-stack
+	run("Subtract Background...", "rolling=50 stack");
+	// Get parameters for substack
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	terChArr = Table.getString("Terminal Marker Channels", imIndex);
+	vxW = Table.get("Voxel Width (um)", imIndex);
+	vxD = Table.get("Voxel Depth (um)", imIndex);
+	slStart = Table.get("ZStart", imIndex);
+	slEnd = Table.get("ZEnd", imIndex);
+	bbXZ = Table.get("BB X0", imIndex);
+	bbXO = Table.get("BB X1", imIndex);
+	bbYZ = Table.get("BB Y0", imIndex);
+	bbYT = Table.get("BB Y2", imIndex);
+	// Generate a max projection composite image that will be labelled with points of interest
+	run("Make Substack...", "channels="+terChArr+" slices="+slStart+"-"+slEnd);
+	run("Make Composite");
+	selectImage(imName+".czi");
+	close();
+	// Allow the user to make any adjustments to the display properties before proceeding 
+	waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
+	// Load the XYZs & allow the user to specify the sorting order
+	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	labels = newArray("ID", "Volume");
+	defaults = newArray("0", "1");
+	Dialog.create("Get Sorting Order");
+	Dialog.addMessage("Indicate the desired sorting order for thumbnail generation."+
+					  "Using the same sorting order that was used for synapses is suggested.");
+	Dialog.addCheckboxGroup(2, 2, labels, defaults);
+	Dialog.show();
+	chkID = Dialog.getCheckbox();
+	chkVol = Dialog.getCheckbox();
+	if ((chkID == 1) && (chkVol == 0)){
+		sort = "ID";
+	}else if ((chkID == 0) && (chkVol == 1)){
+		sort = "Volume_um3";
+	}else {
+		print("Sorting order error: both or no options selected.\n"+
+			  "Defaulting to sorting by volume.");
+		sort = "Volume_um3";
+	}
+	Table.sort(sort);
+	// Iterate through XYZs and perform cropping
+	wbIn = 0; // counter for tracking the number of XYZs within bounds and cropped
+	for (i = 0; i < Table.size; i++) {
+		// Get the XYZ info
+		id = Table.get("ID", i);
+		included = Table.get("XYZinROI?", i);
+		// First verify that the XYZ is within the user defined main bounding box
+		if (included == "Yes"){
+			// Update information to include the XYZ
+			Table.set("XYZinROI?", i, "Yes");
+			selectImage(imName+"-1.czi");
+		    // Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
+			cropX = Table.get("CropX", i);
+			cropY = Table.get("CropY", i);
+			// Calculate and store the start and end slice numbers for the z-stack
+			zSt = Table.get("ZStart", i);
+			zEnd = Table.get("ZEnd", i);
+			// Make a max projection for just this XYZ
+			run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
+			run("Flatten");
+			// Crop the region around the XYX
+		    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
+		    run("Crop");
+		    // Add cross hairs for center
+			setFont("SansSerif",3, "antiliased");
+		    setColor(255, 255, 0);
+			drawString(".", ((tnW/vxW)/2), ((tnW/vxW)/2));
+		    setFont("SansSerif",8, "antiliased");
+		    setColor(255, 255, 255);
+			drawString(id, 1, ((tnW/vxW)-1));
+			// Make and save the maximum projection
+			if (sort == "Volume_um3"){
+				save(batchpath+"SAR.Thumbnails/"+imName+".Terminals/"+imName+".TN."+i+"."+id+".png");
+			}else{
+				save(batchpath+"SAR.Thumbnails/"+imName+".Terminals/"+imName+".TN."+id+".png");
+			}
+			// Close images
+			close(imName+".TN."+id+".png");
+			close("MAX_"+imName+"-1.czi");
+			close("MAX_"+imName+"-2.czi");
+			wbIn++;
+		}
+	}
+	// Generate the thumbnail array
+	File.openSequence(batchpath+"SAR.Thumbnails/"+imName+".Terminals/");
+	nRows = -floor(-(wbIn/10));
+	run("Make Montage...", "columns=10 rows="+nRows+" scale=5");
+	save(batchpath+"SAR.SynArrays/"+imName+".TerArray."+fName+".png");
+	close("*");
 }
 
 // Generate a summary image that has the main components from the analysis
