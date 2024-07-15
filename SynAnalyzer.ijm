@@ -415,11 +415,6 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 				check = Dialog.getString();
 				if (check == "Yes"){
 					mapPillarModiolar(batchpath, imName, fName[i], imIndex);
-					// Ask the user if they want to mark the analysis complete 
-					Dialog.create("Check");
-					Dialog.addString("Mark analysis as complete?", "Yes");
-					Dialog.show();
-					complete =  Dialog.getString();
 				}
 			}else{
 				mapPillarModiolar(batchpath, imName, fName[i], imIndex);
@@ -432,13 +427,25 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 		}
 	}
 	// ANALYZE AFFERENT TERMINALS ***
-	// But first verify that the user wants to proceed
+	// Check if the user indicated they wanted to analyze terminals during the initialization step
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	terCheck = Table.get("Terminal Marker Channels", imIndex);
 	if (terCheck != "TBD") {
-		countTerMarker(batchpath, imName, imIndex);	
+		// Check if terminals have already been analyzed and check if the user wants to repeat
+		if (File.isDirectory(batchpath+"/SAR.Thumbnails/"+imName+".Terminals/")){
+			Dialog.create("Check to proceed");
+			Dialog.addString("Terminals thumbnails have been generated and analyzed. Repeat process?", "No");
+			Dialog.show();
+			check = Dialog.getString();
+			if (check == "Yes"){
+				countTerMarker(batchpath, imName, imIndex);	
+			}
+		}else{
+			countTerMarker(batchpath, imName, imIndex);	
+		}
 	}
 	
+	// Check if all XYZ datasets have been analyzed and if so mark analysis as complete
 	if (j==ir) {
 		// Ask the user if they want to mark the analysis complete 
 		Dialog.create("Check");
@@ -452,7 +459,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			Table.set("Analyzed?",imIndex,complete);
 			Table.update;
 			Table.save(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
-			genSummaryImage(batchpath, batchpath, imName, fName[i]);
+			genSummaryImage(batchpath, batchpath, imName);
 		}
 	}
 }
@@ -1029,14 +1036,30 @@ function countTerMarker(batchpath, imName, imIndex){
 			// Calculate and store the start and end slice numbers for the z-stack
 			zSt = Table.get("ZStart", i);
 			zEnd = Table.get("ZEnd", i);
-			// Make a max projection for just this XYZ
+			
+			// Code for projecting into the Z direction (generating a XY-view of the image)
 			selectImage(imName+"-1.czi");
 			run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
 			run("Flatten");
 			// Crop the region around the XYX
 		    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
 		    run("Crop");
-		    // Add cross hairs for center
+		    
+		    /*
+		    // Code for projecting into the X direction (generating a YZ-view of the image)
+		    // I don't think this is any better than the other projection approach but keeping the code in place
+		    //  in case a user wants to try it. 
+			selectImage(imName+"-1.czi");
+			run("Make Substack...", "slices="+zSt+"-"+zEnd);
+			makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
+		    run("Crop");
+			run("Reslice [/]...", "output="+vxD+" start=Left flip");
+			run("Z Project...", "projection=[Max Intensity]");
+			run("Make Composite");
+			run("Flatten");
+			*/
+		    
+		    // Add center mark
 			setFont("SansSerif",3, "antiliased");
 		    setColor(255, 255, 0);
 			drawString(".", ((tnW/vxW)/2), ((tnW/vxW)/2));
@@ -1056,16 +1079,34 @@ function countTerMarker(batchpath, imName, imIndex){
 			wbIn++;
 		}
 	}
+	// Housekeeping - Close irrelevant images
+	close("*");
 	// Generate the thumbnail array
 	File.openSequence(batchpath+"SAR.Thumbnails/"+imName+".Terminals/");
 	nRows = -floor(-(wbIn/10));
 	run("Make Montage...", "columns=10 rows="+nRows+" scale=5");
 	save(batchpath+"SAR.SynArrays/"+imName+".TerArray."+fName+".png");
-	close("*");
+	// Proceed with having the user add IDs for terminals with the marker
+	Dialog.create("Get Terminal Marker Info");
+	Dialog.addString("Enter the ID numbers for all thumbnails showing\n"+
+					 "the terminal marker.", "247, 253, 246, 252, 279", 50);
+	Dialog.show();
+	terIDs = Dialog.getString();
+	terIDArr = split(terIDs, ",");
+	// Since there are limited table tools have to do this a dirty way by 
+	Table.sort("ID");
+	terIDArr = Array.sort(terIDArr);
+	// Iterate through the IDs and update the XYZ information for each to add marker status
+	for (i = 0; i < lengthOf(terIDArr); i++) {
+		// Need to get the index of the ID in the XYZ table
+		
+	}
 }
 
 // Generate a summary image that has the main components from the analysis
-function genSummaryImage(batchpath, batchpath, imName, fName){
+function genSummaryImage(batchpath, batchpath, imName){
+	// START WORK BY FIXING THE FNAME ISSUE
+	
 	// Update the user about the analysis stage
 	waitForUser("Generating summary image.");
 	dirSV = batchpath+"SAR.SummaryImages/";
