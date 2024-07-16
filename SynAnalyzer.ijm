@@ -821,9 +821,65 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 // WALK THE USER THROUGH COUNTING SYNAPSES ON AN ARRAY
 function countSyns(batchpath, imName, fName, imIndex) {
 	// Update the user about the analysis stage
-	waitForUser("Begining synapse counting process.");
+	waitForUser("Begining Synapse Counting.");
 	// Open the array file
 	open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
+	// Proceed with having the user add IDs for terminals with the marker
+	Dialog.create("Get SynapseMarker Info");
+	Dialog.addMessage("For all fields below, enter the ID numbers for each category (e.g., '234, 214'):");
+	Dialog.addString("Doublets:", "0, 1, 2", 50);
+	Dialog.addString("Orphans:", "3, 4, 5", 50);
+	Dialog.addString("Garbage:", "247, 253", 50);
+	Dialog.show();
+	idsDbArr= split(Dialog.getString(), ",");
+	idsOrArr = split(Dialog.getString(), ",");
+	idsGrArr = split(Dialog.getString(), ",");
+	// Load the XYZs & allow the user to specify the sorting order
+	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	Table.sort("ID");
+	Table.update;
+	// Add column for storing synapse status to the CSV
+	for (i = 0; i < Table.size; i++) {
+		Table.set("SynapseStatus",i,"TBD");
+		included=Table.getString("XYZinROI?",i);
+		// Mark all XYZs within the ROI first as being synapses until marked otherwise
+		if(included=="Yes"){
+			Table.set("SynapseStatus",i,"Synapse");
+			Table.update;
+		}
+	}
+	// Change synapse status for those XYZs that the user identified
+	// Mark doublets
+	for (i = 0; i < lengthOf(idsDbArr); i++) {
+		Table.set("SynapseStatus",idsDbArr[i],"Doublet");
+	}
+	// Mark orphans
+	for (i = 0; i < lengthOf(idsOrArr); i++) {
+		Table.set("SynapseStatus",idsOrArr[i],"Orphan");
+
+	}
+	// Mark garbage
+	for (i = 0; i < lengthOf(idsGrArr); i++) {
+		Table.set("SynapseStatus",idsGrArr[i],"Garbage");
+	}
+	Table.update;
+	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	// Open Batch Master and add information 
+	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+	Table.set(fName+"Doublets", imIndex, lengthOf(idsDbArr));
+	Table.set(fName+"Orphans", imIndex, lengthOf(idsOrArr));
+	Table.set(fName+"Garbage", imIndex, lengthOf(idsGrArr));
+	// Calculate the number of synapses based on information given
+	nT = Table.get(fName+"XYZinROI", imIndex);
+	nSyn = nT+lengthOf(idsDbArr)-lengthOf(idsOrArr)-lengthOf(idsGrArr);
+	Table.set(fName+"Synapses", imIndex, nSyn);
+	Table.update;
+	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	waitForUser("Synapse Analysis for the "+fName+"dataset is complete.");
+	close("*");
+	
+	
+	/* -- Original method --
 	// Create a dialog box for the user to enter values
 	Dialog.create("SynAnalyzer");
 	Dialog.addMessage("Review the synapse array and enter information for each category below:");
@@ -849,6 +905,7 @@ function countSyns(batchpath, imName, fName, imIndex) {
 	Table.update;
 	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	close(imName+".SynArray."+fName+".png");
+	*/ 
 }
 
 // MAP PILLAR-MODIOLAR POSITIONS FOR ALL XYZs within ROI 
