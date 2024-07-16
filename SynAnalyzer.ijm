@@ -459,7 +459,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			Table.set("Analyzed?",imIndex,complete);
 			Table.update;
 			Table.save(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
-			genSummaryImage(batchpath, batchpath, imName);
+			genSummaryImage(batchpath, imName, imIndex);
 		}
 	}
 }
@@ -1178,29 +1178,62 @@ function countTerMarker(batchpath, imName, imIndex){
 }
 
 // Generate a summary image that has the main components from the analysis
-function genSummaryImage(batchpath, batchpath, imName){
-	// START WORK BY FIXING THE FNAME ISSUE
-	
+function genSummaryImage(batchpath, imName, imIndex){
 	// Update the user about the analysis stage
-	waitForUser("Generating summary image.");
+	waitForUser("Beginning Summary Image Generation.");
+	// Set the location for saving the summary images
 	dirSV = batchpath+"SAR.SummaryImages/";
-	svName = imName+".SummaryImage."+fName+".png";
-	// Generate the montage summary image - It must be done in two steps to avoid excess boundary space
-	// Open the two MPIs, create and save a montage of those two first 
-	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName+".png");
-	open(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
-	run("Images to Stack", "use");
-	run("Make Montage...", "columns=1 rows=2 scale=1 font = 48 label");
-	close("Stack");
-	// Open the synapse array and the PM map. Turn these two into a montage
-	open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName+".png");
-	open(batchpath+"SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
-	// Make a new stack of the montage and the two additional images
-	run("Images to Stack", "method=[Copy (center)]");
-	run("Make Montage...", "columns=1 rows=3 scale=1");
-	close("Stack");
-	// Save the Summary Image
-	save(dirSV+svName);
+	// Determine how many syn-marker summary panels need to be generated
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	if (adXYZ=="Only Pre-"){
+		fName = newArray("PreSyn");
+	}else if (adXYZ == "Both Pre- and Post-"){
+		fName = newArray("PreSyn","PostSyn");
+	}else{
+		fName = newArray("PostSyn");
+	}
+	// Default number of rows for the montage image is 3 
+	rows = "3";
+	for (i = 0; i < lengthOf(fName); i++) {
+		// Setup name for the summary image
+		svName = imName+".SummaryImage."+fName[i]+".png";
+		// Generate the montage summary image - It must be done in two steps to avoid excess boundary space
+		// Open the two MPIs, create and save a montage of those two first 
+		open(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName[i]+".png");
+		open(batchpath+"SAR.AnnotatedMPIs/"+imName+".AnnotatedMPI.ROIXYZ."+fName[i]+".png");
+		run("Images to Stack", "use");
+		run("Make Montage...", "columns=1 rows=2 scale=1 font = 48 label");
+		save(dirSV+svName);
+		close("*");
+		// Organize the available arrays
+		if (File.exists(batchpath+"SAR.SynArrays/"+imName+".TerArray."+fName[i]+".png")){
+			open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName[i]+".png");
+			open(batchpath+"SAR.SynArrays/"+imName+".TerArray."+fName[i]+".png");
+			run("Images to Stack", "method=[Copy (center)]");
+			run("Make Montage...", "columns=1 rows=2 scale=1");	
+			close("Stack");
+			
+		}else{
+			open(batchpath+"SAR.SynArrays/"+imName+".SynArray."+fName[i]+".png");
+		}
+		// Add the field of view MPIs
+		open(dirSV+svName);
+		// Add in the PM Map
+		open(batchpath+"SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[i]+".png");
+		// Create and save a new summary montage
+		run("Images to Stack", "method=[Copy (center)]");
+		run("Make Montage...", "columns=1 rows=3 scale=1");	
+		close("Stack");
+		// Save the Summary Image
+		save(dirSV+svName);
+	}
+	// If there were pre- and post-synaptic marker XYZ datasets available, make a double image
+	if(lengthOf(fName)==2){
+		open(batchpath+"SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[0]+".png");
+		open(batchpath+"SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[1]+".png");
+		run("Images to Stack", "method=[Copy (center)]");
+		run("Make Montage...", "columns=2 rows=1 scale=1");
+	}
 	waitForUser("Summary image for "+imName+" has been generated and saved.");
 	close("*");
 }
