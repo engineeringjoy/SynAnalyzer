@@ -1,7 +1,7 @@
 /*
  * SynAnalyzer.ijm
  * Created by JFranco, 02 JUL 2024
- * Last update: 06 JUL 2024
+ * Last update: 15 JUL 2024
  * 
  * ** STILL IN BETA MODE ***
  * 
@@ -961,8 +961,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	// Save the annotated image
 	save(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
 	waitForUser("Pillar-Modiolar mapping for "+imName+" is complete.");
-	close("*");
-	
+	close("*");	
 }
 
 // Generate a thumbnail array using only the terminal marker channel and allow the user to review
@@ -1027,7 +1026,6 @@ function countTerMarker(batchpath, imName, imIndex){
 		// Get the XYZ info
 		id = Table.getString("ID", i);
 		included = Table.getString("XYZinROI?", i);
-		print(included);
 		// First verify that the XYZ is within the user defined main bounding box
 		if (included == "Yes"){
 		    // Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
@@ -1093,14 +1091,33 @@ function countTerMarker(batchpath, imName, imIndex){
 	Dialog.show();
 	terIDs = Dialog.getString();
 	terIDArr = split(terIDs, ",");
-	// Since there are limited table tools have to do this a dirty way by 
+	// Since there are limited table tools have to do this a dirty way 
 	Table.sort("ID");
+	Table.update;
 	terIDArr = Array.sort(terIDArr);
-	// Iterate through the IDs and update the XYZ information for each to add marker status
-	for (i = 0; i < lengthOf(terIDArr); i++) {
-		// Need to get the index of the ID in the XYZ table
-		
+	// Add column for storing marker status to the CSV
+	for (i = 0; i < Table.size; i++) {
+		Table.set("MarkerStatus",i,"TBD");
+		included=Table.getString("XYZinROI?",i);
+		// Mark all XYZs within the ROI first as not having the marker 
+		if(included=="Yes"){
+			Table.set("MarkerStatus",i,"Negative");
+			Table.update;
+		}
 	}
+	// Change marker status for those XYZs that the user identified
+	for (i = 0; i < lengthOf(terIDArr); i++) {
+		Table.set("MarkerStatus",terIDArr[i],"Positive");
+		Table.update;
+	}
+	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	// Update Batch Master
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	Table.set(fName+"WMarker", imIndex, toString(lengthOf(terIDArr)));
+	Table.update;
+	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	waitForUser("Terminal Marker Analysis is complete.");
+	close("*");
 }
 
 // Generate a summary image that has the main components from the analysis
