@@ -343,7 +343,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 		ir = 2;
 		fName = newArray("PreSyn","PostSyn");
 	}else {
-		ir =  1;
+		ir = 1;
 		if (adXYZ=="Only Pre-"){
 			fName = newArray("PreSyn");
 		}else{
@@ -351,10 +351,10 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 		}
 	}
 	// *** 1. OPEN THE IMAGE AND GET KEY INFO ***
-	match = "No";
 	// Check if the analysis has already been started
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	test = Table.getString("ZStart", imIndex);
+	close("*.csv");
 	if (test != "TBD"){
 		// Check if the user wants to repeat the initialization process
 		Dialog.create("Check to proceed");
@@ -362,18 +362,19 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 		Dialog.show();
 		check = Dialog.getString();
 		if (check == "Yes"){
-			getAnalysisInfo(batchpath, imName, imIndex);
-			match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
-		}else{
-			match="Yes";
+			getAnalysisInfo(batchpath, imName, imIndex);	
 		}
 	}else{
 		// Image analysis info has not been acquired yet
 		getAnalysisInfo(batchpath, imName, imIndex);
-		match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
 	}
 	// *** 2. ITERATE THROUGH AVAILABLE XYZ DATA SETS & GEN THUMBNAILS ***
 	for (i = 0; i < ir; i++) {
+		// Make sure previous .csv files were closed
+		close("*.csv");
+		// Reset the match variable for every run of the for-loop
+		match = "No";
+		match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
 		if (match == "Yes"){
 			// 2.2 Generate thumbnails if the XYZ data matches
 			//  but check if the user wants to repeat thumbnail generation if it was already done.
@@ -393,6 +394,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			// Check if the analysis has already been started
 			Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 			test = Table.getString(fName[i]+"Synapses", imIndex);
+			close("*.csv");
 			if (test != "TBD"){
 				Dialog.create("Check to proceed");
 				Dialog.addString("Synapses have been counted. Repeat counting?", "No");
@@ -430,6 +432,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	// Check if the user indicated they wanted to analyze terminals during the initialization step
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	terCheck = Table.get("Terminal Marker Channels", imIndex);
+	close("*.csv");
 	if (terCheck != "TBD") {
 		// Check if terminals have already been analyzed and check if the user wants to repeat
 		if (File.isDirectory(batchpath+"/SAR.Thumbnails/"+imName+".Terminals/")){
@@ -459,6 +462,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			Table.set("Analyzed?",imIndex,complete);
 			Table.update;
 			Table.save(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+			close("*.csv");
 			genSummaryImage(batchpath, imName, imIndex);
 		}
 	}
@@ -599,6 +603,7 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	Table.update;
 	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	close("*");
+	close("*.csv");
 }
 
 // VERIFY THAT THE XYZ POSITIONS MATCH THE IMAGE
@@ -655,6 +660,7 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	Dialog.show();
 	match = Dialog.getRadioButton();
 	close("*");
+	close("*.csv");
 	return match;
 }
 
@@ -815,6 +821,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	Table.set(fName+"XYZinROI", imIndex, wbIn);
 	Table.update;
 	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	close("*.csv");
 	
 }
 
@@ -848,6 +855,7 @@ function countSyns(batchpath, imName, fName, imIndex) {
 			Table.update;
 		}
 	}
+	print(Table.size);
 	// Change synapse status for those XYZs that the user identified
 	// Mark doublets
 	for (i = 0; i < lengthOf(idsDbArr); i++) {
@@ -877,8 +885,7 @@ function countSyns(batchpath, imName, fName, imIndex) {
 	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	waitForUser("Synapse Analysis for the "+fName+"dataset is complete.");
 	close("*");
-	
-	
+	close("*.csv");
 	/* -- Original method --
 	// Create a dialog box for the user to enter values
 	Dialog.create("SynAnalyzer");
@@ -1019,6 +1026,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	save(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
 	waitForUser("Pillar-Modiolar mapping for "+imName+" is complete.");
 	close("*");	
+	close("*.csv");
 }
 
 // Generate a thumbnail array using only the terminal marker channel and allow the user to review
@@ -1175,6 +1183,7 @@ function countTerMarker(batchpath, imName, imIndex){
 	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	waitForUser("Terminal Marker Analysis is complete.");
 	close("*");
+	close("*.csv");
 }
 
 // Generate a summary image that has the main components from the analysis
@@ -1236,4 +1245,5 @@ function genSummaryImage(batchpath, imName, imIndex){
 	}
 	waitForUser("Summary image for "+imName+" has been generated and saved.");
 	close("*");
+	close("*.csv");
 }
