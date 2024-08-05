@@ -22,7 +22,7 @@
 */
 // *** USER PRESETS ***
 // Default batch path
-defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/CodeDev/SynAnalyzerBatch/";
+defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/WSS/BatchAnalysis/SynAnalysis_BclwSNHL_NeonatalAAV/";
 // Thumbnail bounding box dimesions in um
 tnW = 2;
 tnH = 2;
@@ -354,7 +354,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	// Check if the analysis has already been started
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	test = Table.getString("ZStart", imIndex);
-	close("*.csv");
+	//close("*.csv");
 	if (test != "TBD"){
 		// Check if the user wants to repeat the initialization process
 		Dialog.create("Check to proceed");
@@ -370,8 +370,6 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	}
 	// *** 2. ITERATE THROUGH AVAILABLE XYZ DATA SETS & GEN THUMBNAILS ***
 	for (i = 0; i < ir; i++) {
-		// Make sure previous .csv files were closed
-		close("*.csv");
 		// Reset the match variable for every run of the for-loop
 		match = "No";
 		match = verifyXYZMatch(batchpath, imName, fName[i], imIndex);
@@ -394,7 +392,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			// Check if the analysis has already been started
 			Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 			test = Table.getString(fName[i]+"Synapses", imIndex);
-			close("*.csv");
+			//close("*.csv");
 			if (test != "TBD"){
 				Dialog.create("Check to proceed");
 				Dialog.addString("Synapses have been counted. Repeat counting?", "No");
@@ -432,7 +430,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 	// Check if the user indicated they wanted to analyze terminals during the initialization step
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
 	terCheck = Table.get("Terminal Marker Channels", imIndex);
-	close("*.csv");
+	//close("*.csv");
 	if (terCheck != "TBD") {
 		// Check if terminals have already been analyzed and check if the user wants to repeat
 		if (File.isDirectory(batchpath+"/SAR.Thumbnails/"+imName+".Terminals/")){
@@ -462,7 +460,7 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			Table.set("Analyzed?",imIndex,complete);
 			Table.update;
 			Table.save(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
-			close("*.csv");
+			//close("*.csv");
 			genSummaryImage(batchpath, imName, imIndex);
 		}
 	}
@@ -566,8 +564,12 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 		terChArr = "["+String.join(terCh)+"]";
 		Table.set("Terminal Marker Channels", imIndex, terChArr);
 		Table.update;
+	}else{
+		Table.set("Terminal Marker Channels", imIndex, "NA");
+		Table.update;
 	}
 	// Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
+	waitForUser("Adjust the brightness/contrast of the image as necessary for the maximum projection.");
 	run("Make Substack...", "slices="+slStart+"-"+slEnd);
 	run("Z Project...", "projection=[Max Intensity]");
 	run("Make Composite");
@@ -603,7 +605,6 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	Table.update;
 	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	close("*");
-	close("*.csv");
 }
 
 // VERIFY THAT THE XYZ POSITIONS MATCH THE IMAGE
@@ -624,11 +625,13 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	//  also adding converted positions in this step for ease 
 	tableRows = Table.size;
 	Table.sort("ID");
+	Table.update;
 	for (i = 0; i < tableRows; i++) {
 		id = Table.get("ID", i);
-		xPos = (Table.get("Position X", i))*(1/vxW);
-		yPos = (Table.get("Position Y", i))*(1/vxW);
-		zPos = (Table.get("Position Z", i))*(1/vxD);
+		print(Table.get("Position X", i));
+		xPos = (Table.get("Position X", i)/vxW);
+		yPos = (Table.get("Position Y", i)/vxW);
+		zPos = (Table.get("Position Z", i)/vxD);
 		Table.set("Position X (voxels)", i, xPos);
 		Table.set("Position Y (voxels)", i, yPos);
 		Table.set("Position Z (voxels)", i, zPos);
@@ -707,10 +710,11 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 		sort = "Volume_um3";
 	}else {
 		print("Sorting order error: both or no options selected.\n"+
-			  "Defaulting to sorting by volume.");
-		sort = "Volume_um3";
+			  "Defaulting to sorting by ID.");
+		sort = "ID";
 	}
 	Table.sort(sort);
+	Table.update;
 	// Open the substack MPI for labelling purposes
 	open(batchpath+"SAR.RawMPIs/"+imName+".RawMPI.tif");
 	// Iterate through XYZs and perform cropping
