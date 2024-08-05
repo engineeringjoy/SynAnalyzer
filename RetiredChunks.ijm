@@ -257,3 +257,24 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	
 }
  */
+ 
+ 
+/*
+ * 	// 1. Load the XYZs & add column to sheet for Synapse Status
+	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	Table.sort("ID");
+	Table.update;
+	//   Add column for storing synapse status to the CSV
+	for (i = 0; i < Table.size; i++) {
+		included=Table.getString("XYZinROI?",i);
+		if(included=="Yes"){
+			status = Table.get("SynapseStatus",i);
+			if(status==
+			
+			Table.update;
+		}
+	}
+	Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	//    Close the table to avoid confusion while the user is editing the spreadsheet
+	close("*.csv");
+ */
