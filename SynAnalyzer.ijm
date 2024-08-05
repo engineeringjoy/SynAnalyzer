@@ -53,6 +53,8 @@ while (choice != "EXIT") {
 		runSpecific(batchpath);
 	}
 	choice = getUserChoice();
+	close("*");
+	close("*.csv");
 }
 // *END MAIN MACRO*
 
@@ -109,6 +111,7 @@ function initSynAnalyzer() {
 				Table.set("ZEnd", i, "TBD");
 				Table.set("Synaptic Marker Channels", i, "TBD");
 				Table.set("Terminal Marker Channels", i, "TBD");
+				Table.set("Pillar-Modiolar Marker Channels", i, "TBD");
 				Table.set("Voxel Width (um)", i, "TBD");
 				Table.set("Voxel Depth (um)", i, "TBD");
 				Table.set("BB X0", i, "TBD");
@@ -170,6 +173,7 @@ function initSynAnalyzer() {
 					Table.set("ZEnd", row, "TBD");
 					Table.set("Synaptic Marker Channels", row, "TBD");
 					Table.set("Terminal Marker Channels", row, "TBD");
+					Table.set("Pillar-Modiolar Marker Channels", i, "TBD");
 					Table.set("Voxel Width (um)", row, "TBD");
 					Table.set("Voxel Depth (um)", row, "TBD");
 					Table.set("BB X0", row, "TBD");
@@ -440,22 +444,24 @@ function analyzeIm(batchpath, imName, adXYZ, imIndex){
 			countSyns(batchpath, imName, fName[i], imIndex);
 		}
 		
-		// *** 4. PROCEED WITH PILLAR-MODIOLAR MAPPING FOR MATCHED DATASETS ***
-		//  but check if the user wants to repeat counting if it was already done.
-		// Check if the analysis has already been started
-		if (File.exists(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[i]+".png")){
-			Dialog.create("Check to proceed");
-			Dialog.addString("Pillar-modiolar mapping is complete. Repeat mapping?", "No");
-			Dialog.show();
-			check = Dialog.getString();
-			if (check == "Yes"){
+		// PILLAR-MODIOLAR MAPPING
+		Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+		pmAnaChk = Table.getString("Pillar-Modiolar Mapping Channels", imIndex);
+		close("*.csv");
+		if (pmAnaChk != "NA"){
+			if (File.exists(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName[i]+".png")){
+				Dialog.create("Check to proceed");
+				Dialog.addString("Pillar-modiolar mapping is complete. Repeat mapping?", "No");
+				Dialog.show();
+				check = Dialog.getString();
+				if (check == "Yes"){
+					mapPillarModiolar(batchpath, imName, fName[i], imIndex);
+				}
+			}else{
 				mapPillarModiolar(batchpath, imName, fName[i], imIndex);
 			}
-		}else{
-			mapPillarModiolar(batchpath, imName, fName[i], imIndex);
 		}
 		j=i+1;
-		
 	}
 	// ANALYZE AFFERENT TERMINALS ***
 	// Check if the user indicated they wanted to analyze terminals during the initialization step
@@ -599,6 +605,43 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 		Table.set("Terminal Marker Channels", imIndex, "NA");
 		Table.update;
 	}
+	// Ask the user to specify the Pillar-Modiolar Marker Channels
+	Dialog.create("Get Analysis Info");
+	Dialog.addString("Include pillar-mdiolar mapping in analysis?", "Yes");
+	Dialog.addMessage("If applicable, indicate the channels to use for pillar-modiolar mapping.");
+	Dialog.addCheckboxGroup(channels, 2, labels, defaults);
+	Dialog.show();
+	pmCheck = Dialog.getString();
+	if (pmCheck == "Yes"){
+		//   Get the information from the dialog box
+		pmChCount = 0;
+		include = newArray(channels);
+		for (i = 0; i < lengthOf(labels); i++) {
+			// Count the number of channels to include
+			if (Dialog.getCheckbox() == 1){
+				pmChCount++;
+				include[i] = "Yes";
+			}else{
+				include[i] = "No";
+			}
+		}
+		// Make an array of the channels to include
+		pmCh = newArray(pmChCount);
+		chCount = 0;
+		for (i = 0; i < channels; i++) {
+			if (include[i] == "Yes") {
+				// Channel indexing starts at 1
+				pmCh[chCount] = i+1;
+				chCount++;
+			}
+		}
+		pmChArr = "["+String.join(pmCh)+"]";
+		Table.set("Pillar-Modiolar Marker Channels", imIndex, pmChArr);
+		Table.update;
+	}else{
+		Table.set("Pillar-Modiolar Marker Channels", imIndex, "NA");
+		Table.update;
+	}
 	// Make & save a max proj to help user with visualizing surfaces based on inclusion criteria
 	waitForUser("Adjust the brightness/contrast of the image as necessary for the maximum projection.");
 	run("Make Substack...", "slices="+slStart+"-"+slEnd);
@@ -644,8 +687,8 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	waitForUser("Begining verification of XYZ dataset-image match.");
 	// Load the Batch Master to get the voxel dimensions
 	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
-	vxW = parseFloat(Table.getString("Voxel Width (um)", imIndex));
-	vxD = parseFloat(Table.getString("Voxel Depth (um)", imIndex));
+	vxW = Table.get("Voxel Width (um)", imIndex);
+	vxD = Table.get("Voxel Depth (um)", imIndex);
 	// Open the substack MPI for labelling purposes
 	open(batchpath+"SAR.RawMPIs/"+imName+".RawMPI.tif");
 	// Load the raw XYZ points
@@ -659,10 +702,10 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	Table.update;
 	for (i = 0; i < tableRows; i++) {
 		id = Table.get("ID", i);
-		xPos = (Table.get("Position X", i)/vxW);
-		yPos = (Table.get("Position Y", i)/vxW);
-		zPos = (Table.get("Position Z", i)/vxD);
-		Table.set("SynapseStatus", i "TBD");
+		Table.set("SynapseStatus", i, "TBD");
+		xPos = (Table.get("Position X", i)*(1/vxW));
+		yPos = (Table.get("Position Y", i)*(1/vxW));
+		zPos = (Table.get("Position Z", i)*(1/vxD));
 		Table.set("Position X (voxels)", i, xPos);
 		Table.set("Position Y (voxels)", i, yPos);
 		Table.set("Position Z (voxels)", i, zPos);
@@ -951,21 +994,39 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	waitForUser("Beginning pillar-modiolar mapping.");
 	// Get the information about the ROI 
 	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+	pmChStr = Table.getString("Pillar-Modiolar Marker Channels", imIndex);
+	pmCh = split(pmChStr, "'[',',',']',' ',");
 	xSt = Table.get("BB X0", imIndex);
 	xEnd = Table.get("BB X1", imIndex);
 	zSt = Table.get("ZStart", imIndex);
 	zEnd = Table.get("ZEnd", imIndex);
 	// Open the raw image
 	open(batchpath+"RawImages/"+imName+".czi");
+	// Make a new stack based on the channels to include
+	Stack.getDimensions(width, height, channels, slices, frames);
 	getDimensions(width, height, channels, slices, frames);
 	getVoxelSize(vW, vH, vD, unit);
-	// Crop the z-stack accordingly\
+	run("Split Channels");
+	for (i = 0; i < channels; i++) {
+		ch = i+1;
+		selectImage("C"+toString(ch)+"-"+imName+".czi");
+		if (ch != pmCh[0]){
+			close();
+		}
+	}
+	// .  Create a composite image of the two synaptic marker channels
+	// .   c2 is green, c6 is magenta
+	//cTwoIm = "C"+toString(synCh[0])+"-"+imName+".czi";
+	//cSixIm = "C"+toString(synCh[1])+"-"+imName+".czi";
+	//run("Merge Channels...", "c2="+cTwoIm+" c6="+cSixIm+" create keep");
+	//run("Make Composite");
+	// Crop the z-stack accordingly
 	makeRectangle(xSt, 0, xEnd-xSt, height);
 	run("Crop");
 	// Make the ortho projection
 	run("Reslice [/]...", "output="+vD+" start=Left flip");
 	run("Z Project...", "projection=[Max Intensity]");
-	run("Make Composite");
+	//run("Make Composite");
 	getPixelSize(unit, pixW, pixH);
 	run("Flatten");
 	// Close unused images
