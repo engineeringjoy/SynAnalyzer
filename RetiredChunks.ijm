@@ -1,3 +1,83 @@
+// 4. Generate the three different thumbnails for every XYZ (i.e., ch1, ch2, and composite
+	// .   Iterate through XYZs and perform cropping
+	wbIn = 0;  // counter for tracking the number of XYZs within bounds and cropped
+	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
+	nXYZs = Table.size;
+	tempImNames = newArray("C"+toString(synCh[0])+"-"+imName, "C"+toString(synCh[1])+"-"+imName, imName);
+	fsExt = newArray("C1", "C2", "Comp");
+	for (i = 0; i < nXYZs; i++) {
+		// . Get the XYZ info
+		// . X and Y should be in terms of voxels
+		// . Z needs to be in the slice number
+		id = Table.get("ID", i);
+		xPos = Table.get("Position X (voxels)", i);
+		yPos = Table.get("Position Y (voxels)", i);
+		zPos = Table.get("Position Z (voxels)", i);
+		slZ = round(zPos);
+		// . Verify that the XYZ is within the user defined main bounding box
+		if ((xPos >= bbXZ) && (xPos <= bbXO)) { 
+			if ((yPos >= bbYZ) && (yPos <= bbYT)) {
+				if ((slZ >= slStart) && (slZ <= slEnd)){
+					// Update information to include the XYZ
+					Table.set("XYZinROI?", i, "Yes");
+					// Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
+					cropX = xPos - ((tnW/vxW)/2);
+					cropY = yPos - ((tnH/vxW)/2); 
+					Table.set("CropX", i, cropX);
+					Table.set("CropY", i, cropY);
+					// Calculate and store the start and end slice numbers for the z-stack
+					zSt = round(slZ-((tnZ/vxD)/2));
+					zEnd = floor(slZ+((tnZ/vxD)/2));
+					Table.set("ZStart", i, zSt);
+					Table.set("ZEnd", i, zEnd);
+					Table.update;
+					// Iterate through the three different images to perform cropping
+					for (j = 0; j < 3; j++) {
+						imTempName = tempImNames[j];
+						fs = fsExt[j];
+						selectImage(imTempName+".czi");
+						// Make a max projection for just this XYZ
+						run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
+						run("Flatten");
+						// Crop the region around the XYX
+					    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
+					    run("Crop");
+					    // Add cross hairs for center
+						setFont("SansSerif",3, "antiliased");
+					    setColor(255, 255, 0);
+						drawString(".", ((tnW/vxW)/2), ((tnW/vxW)/2));
+					    setFont("SansSerif",8, "antiliased");
+					    setColor(255, 255, 255);
+						drawString(id, 1, ((tnW/vxW)-1));
+						// Save the thumbnail image
+						save(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/"+imName+".TN."+id+"."+fs+".png");
+						// Close images
+						close(imName+".TN."+id+"."+fs+".png");
+						close("MAX_"+imTempName+"-1.czi");
+						close("MAX_"+imTempName+".czi");
+					}
+					wbIn++;
+					// Update the annotated MPI
+					selectImage(imName+".RawMPI.tif");
+					makePoint(xPos, yPos, "tiny yellow dot add");
+					setFont("SansSerif",10, "antiliased");
+				    setColor(255, 255, 255);
+					drawString(id, xPos, yPos);
+				}else{
+					// XYZ is not within Z bounds
+					Table.set("XYZinROI?", i, "No");
+				}
+			}else{
+				// XYZ is not within Y bounds
+				Table.set("XYZinROI?", i, "No");
+			}
+		}else{
+			// XYZ is not within X bounds
+			Table.set("XYZinROI?", i, "No");
+		}
+	}
+
+
 /* ***   Setup the arrays for indexing the XYZ    ****
 	nRows = -floor(-(Table.size/10));
 	arrLet = newArray("A","B","C","D","E","F","G","H","I","J","K");
