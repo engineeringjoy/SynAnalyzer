@@ -993,6 +993,7 @@ function countSyns(batchpath, imName, fName, imIndex) {
 	        open(batchpath+"SAR.SynArrays/"+ arrList[i]);
 	    } 
 	}
+	run("Images to Stack", "use");
 	//    1b. Open the annotated MPI 
 	//open(batchpath+"SAR.AnnotatedMPIs/"+imName+".RawMPI.AllXYZs."+fName+".png");
 	// 2. Have the user open the CSV file and manually update the information for each synapse
