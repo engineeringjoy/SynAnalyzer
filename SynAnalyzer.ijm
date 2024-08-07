@@ -1209,6 +1209,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 			    setColor(255, 255, 255);
 				drawString(id, xPos, yPos);
 				Table.set("PMStatus", i, "Pillar");
+				Table.update;
 				pCount++;
 			}else{
 				// Add an annotation to the MPI for verification purposes
@@ -1217,6 +1218,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 			    setColor(255, 255, 255);
 				drawString(id, xPos, yPos);
 				Table.set("PMStatus", i, "Modiolar");
+				Table.update;
 				mCount++;
 			}
 		}
