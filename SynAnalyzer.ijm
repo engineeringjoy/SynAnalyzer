@@ -46,9 +46,12 @@ while (choice != "EXIT") {
 	if (choice == "Batch") {
 		// Batch mode iterates through all unalyzed images until the user says to stop
 		runBatch(batchpath);
-	}else{
+	}else if (choice == "Specific Image") {
 		// Specific Image mode allows the user to select a specific image and only analyzes that one.
 		runSpecific(batchpath);
+	}else if (choice == "Specific Task") {
+		// Allows the user to complete one task for an existing dataset
+		specificTask(batchpath);
 	}
 	choice = getUserChoice();
 	close("*");
@@ -99,6 +102,7 @@ function initSynAnalyzer() {
 		File.makeDirectory(dirTN);
 		
 		// *** SETUP BATCH MASTER RESULTS TABLE ***
+		// FUTURE WORK: TURN THIS INTO A FOR LOOP THAT ITERATES THROUGH ARRAY WITH COLUMN NAMES
 		Table.create("SynAnalyzerBatchMaster.csv");
 		for (i = 0; i < lengthOf(filelist); i++) {
 		    if (endsWith(filelist[i], ".czi")) { 
@@ -143,6 +147,10 @@ function initSynAnalyzer() {
 				Table.set("PreSyn_WMarker", i, "TBD");
 				Table.set("PostSyn_nWMarker", i, "TBD");
 				Table.set("PostSyn_WMarker", i, "TBD");
+				Table.set("PreSyn_nPillar", i, "TBD");
+				Table.set("PreSyn_nPModiolar", i, "TBD");
+				Table.set("PostSyn_nPillar", i, "TBD");
+				Table.set("PostSyn_nPModiolar", i, "TBD");
 		    } 
 		}
 		Table.save(dirAna+fBM);
@@ -163,6 +171,7 @@ function initSynAnalyzer() {
 					}
 				}
 				// Add the filename to the table if bool did not switch to being true
+				// FUTURE WORK: TURN THIS INTO A FOR LOOP THAT ITERATES THROUGH ARRAY WITH COLUMN NAMES
 				if (bool == "False") {
 					row = Table.size;
 					Table.set("ImageName",row, filelist[i]);
@@ -205,6 +214,10 @@ function initSynAnalyzer() {
 					Table.set("PreSyn_WMarker", row, "TBD");
 					Table.set("PostSyn_nWMarker", row, "TBD");
 					Table.set("PostSyn_WMarker", row, "TBD");
+					Table.set("PreSyn_nPillar", row, "TBD");
+					Table.set("PreSyn_nPModiolar", row, "TBD");
+					Table.set("PostSyn_nPillar", row, "TBD");
+					Table.set("PostSyn_nPModiolar", row, "TBD");
 					Table.update;
 				}	
 		    }
@@ -217,10 +230,10 @@ function initSynAnalyzer() {
 // ALLOW USER TO CHOOSE HOW TO PROCEED
 function getUserChoice() {
 	// *** ASK THE USER WHAT THEY WANT TO DO ***
-	choiceArray = newArray("Batch", "Specific Image", "EXIT");
+	choiceArray = newArray("Batch", "Specific Image", "Specific Task", "EXIT");
 	Dialog.create("SynAnalyzer GetChoice");
 	Dialog.addMessage("Choose analysis mode:");
-	Dialog.addRadioButtonGroup("Choices",choiceArray, 3, 1, "Batch");
+	Dialog.addRadioButtonGroup("Choices",choiceArray, 4, 1, "Batch");
 	Dialog.show();
 	choice = Dialog.getRadioButton();
 	return choice;
@@ -288,6 +301,53 @@ function runSpecific(batchpath){
 		// The Batch Master list needs to be updated. Easiest is to have the user restart. 
 		print(filelist[i]+" is not registered with Batch Master.\n"+
 			  "Recommend restarting the macro if you want to analyze this image.");
+	}
+}
+
+// PERFORM A SPECIFIC TASK
+//   This function is being added so that a user could repeat a specific portion of analysis process on an existing dataseet
+function specificTask(batchpath){
+	// *** ASK THE USER WHAT THEY WANT TO TASK THEY WANT TO PERFORM ***
+	// This function is a work in progress and new tasks will be added as they become necessary
+	choiceArray = newArray("Pillar-Modiolar Mapping");
+	Dialog.create("SynAnalyzer GetChoice");
+	Dialog.addMessage("Choose analysis mode:");
+	Dialog.addRadioButtonGroup("Choices",choiceArray, 1, 1, "Pillar-Modiolar Mapping");
+	Dialog.show();
+	choice = Dialog.getRadioButton();
+	// Open batch master and begin iterating through registered images
+	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+	nIms = Table.size;
+	close("*.csv");
+	if (choice == "Pillar-Modiolar Mapping") {
+		// Check if the user wants to repeat the initialization process
+		Dialog.create("Get Analysis Info");
+		Dialog.addString("Specify XYZ data set to use for mapping:", "PreSyn");
+		Dialog.addString("Specify the channel to use for PM Mapping:", "3");
+		Dialog.show();
+		fName = Dialog.getString();
+		pmCh = Dialog.getString();
+	}
+	for (imIndex = 0; imIndex < nIms; imIndex++) {
+		Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
+		pmDone = Table.getString("Pillar-Modiolar Marker Channels", imIndex);
+		if (pmDone == "Not Included"){
+			imName = Table.getString("ImageName", imIndex);
+			imName = replace(imName, ".czi", "");
+			Table.set("Pillar-Modiolar Marker Channels", imIndex, "["+pmCh+"]");
+			Table.update;
+			Table.save(batchpath+"SAR.Analysis/SynAnalyzerBatchMaster.csv");
+			close("*.csv");
+			mapPillarModiolar(batchpath, imName, fName, imIndex);
+			// Check if the user wants to continue
+			Dialog.create("Get Analysis Info");
+			Dialog.addString("Continue with pillar-modiolar mapping for the next image?", "Yes");
+			Dialog.show();
+			choice = Dialog.getString();
+			if (choice == "No"){
+				exit;
+			}
+		}
 	}
 }
 
@@ -1066,6 +1126,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	Stack.getDimensions(width, height, channels, slices, frames);
 	getDimensions(width, height, channels, slices, frames);
 	getVoxelSize(vW, vH, vD, unit);
+	// NEED TO FIX THIS SECTION -- CURRENTLY NOT SETUP FOR MORE THAN ONE CHANNEL
 	run("Split Channels");
 	for (i = 0; i < channels; i++) {
 		ch = i+1;
@@ -1126,6 +1187,8 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	// Open the XYZ data
 	Table.open(batchpath+"SAR.Analysis/"+imName+".XYZ."+fName+".csv");
 	nXYZs = Table.size;
+	pCount = 0;
+	mCount = 0;
 	for (i = 0; i < nXYZs; i++) {
 		// Check if the XYZ should be included
 		valid = Table.getString("XYZinROI?", i);
@@ -1146,6 +1209,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 			    setColor(255, 255, 255);
 				drawString(id, xPos, yPos);
 				Table.set("PMStatus", i, "Pillar");
+				pCount++;
 			}else{
 				// Add an annotation to the MPI for verification purposes
 				makePoint(xPos, yPos, "medium cyan dot add");
@@ -1153,6 +1217,7 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 			    setColor(255, 255, 255);
 				drawString(id, xPos, yPos);
 				Table.set("PMStatus", i, "Modiolar");
+				mCount++;
 			}
 		}
 		else {
@@ -1172,6 +1237,13 @@ function mapPillarModiolar(batchpath, imName, fName, imIndex){
 	save(batchpath+"/SAR.PillarModiolarMaps/"+imName+".PMMap."+fName+".png");
 	waitForUser("Pillar-Modiolar mapping for "+imName+" is complete.");
 	close("*");	
+	close("*.csv");
+	// Add counts to Batch Master
+	Table.open(batchpath+"/SAR.Analysis/SynAnalyzerBatchMaster.csv");
+	Table.set(fName+"_nPillar", imIndex, pCount);
+	Table.set(fName+"_nModiolar", imIndex, mCount);
+	Table.update;
+	Table.save(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
 	close("*.csv");
 }
 
