@@ -815,10 +815,9 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	for (i = 0; i < tableRows; i++) {
 		id = Table.get("ID", i);
 		Table.set("SynapseStatus", i, "Synapse");
-		xPos = (Table.get("Position X (voxels)", i)*(1/vxW));
-		//xPos=xPos+(xPos*2.222);
-		yPos = (Table.get("Position Y (voxels)", i)*(1/vxW));
-		zPos = (Table.get("Position Z (voxels)", i)*(1/vxD));
+		xPos = (Table.get("Position X (voxels)", i));
+		yPos = (Table.get("Position Y (voxels)", i));
+		zPos = (Table.get("Position Z (voxels)", i));
 		//Table.set("Position X (voxels)", i, xPos);
 		//Table.set("Position Y (voxels)", i, yPos);
 		//Table.set("Position Z (voxels)", i, zPos);
