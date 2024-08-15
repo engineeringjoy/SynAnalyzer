@@ -29,6 +29,8 @@ tnH = 3;
 tnZ = 1.5;
 // Annotated Image Size - Currently based on the output width of the SynArray
 annImW = 1650;
+// Rolling ball radius for background subtraction (in pixels)
+rbRadius = 50;
 
 // *** HOUSEKEEPING ***
 run("Close All");
@@ -372,7 +374,7 @@ function imVerification(i, filename, filelist, ims, batchpath){
 				// Update the boolean
 				exists = "Yes";
 				// Check if the image has been analyzed or not
-				analyBool = Table.getString("PreSyn_nSynapses", j);
+				analyBool = Table.getString("Analyzed?", j);
 				// If the image hasn't been analyzed, check that it has XYZs available
 				if (analyBool == "TBD"){
 					imName = substring(filename, 0, indexOf(filename, ".czi"));
@@ -409,23 +411,34 @@ function imVerification(i, filename, filelist, ims, batchpath){
 						analyzeIm(batchpath, imName, adXYZ, imIndex);
 					}
 					exists = "Check again";
-				}else{
-					exists = "Skip";
-					/*
+				}else if (analyBool == "No"){
 					Dialog.create("Check to proceed");
-					Dialog.addString("Image has been analyzed. Repeat the process?", "No");
+					Dialog.addString("Analysis has been initiated. Continue the process?", "Yes");
 					Dialog.show();
 					check = Dialog.getString();
 					if (check == "Yes"){
 						// Update information about the analysis for this image
-						Table.set("Analyzed?", j, "No");
+						Table.set("Analyzed?", j, "TBD");
 						Table.update;
 						Table.save(batchpath+"SAR.Analysis/SynAnalyzerBatchMaster.csv");
 						j=j-1;
 					}else{
 						print("User opted to skip re-analysis. Returning to menu.");
 					}
-					*/
+				}else if (analyBool == "Yes") {
+					Dialog.create("Check to proceed");
+					Dialog.addString("Image has been marked as fully analyzed. Repeat the process?", "No");
+					Dialog.show();
+					check = Dialog.getString();
+					if (check == "Yes"){
+						// Update information about the analysis for this image
+						Table.set("Analyzed?", j, "TBD");
+						Table.update;
+						Table.save(batchpath+"SAR.Analysis/SynAnalyzerBatchMaster.csv");
+						j=j-1;
+					}else{
+						print("User opted to skip re-analysis. Returning to menu.");
+					}
 				}
 			}
 		}
@@ -753,27 +766,18 @@ function getAnalysisInfo(batchpath, imName, imIndex){
 	selectImage("MAX_"+imName+"-1.czi");
 	close();
 	// Have the user draw a rectangle around the region to analyze
-	/*
 	setTool("rectangle");
 	waitForUser("Draw a rectangle around the hair cells to include in the analysis then press [t] to add to the ROI Manager.\n"+
 				"Start with the upper left corner and move down and right across the image."+
 				"Make sure the rectangle is still visible when pressing 'Ok' to proceed."+
 				"Take note of the number of hair cells included in the analysis area.");
-	*/
 	// Get the coordinates for the rectangle
-	/*
 	Roi.getCoordinates(xpoints, ypoints);
 	Roi.remove;
 	Table.set("BB X0", imIndex, xpoints[0]);
 	Table.set("BB X1", imIndex, xpoints[1]);
 	Table.set("BB Y0", imIndex, ypoints[0]);
 	Table.set("BB Y2", imIndex, ypoints[2]);
-	*/
-	Table.set("BB X0", imIndex, 0);
-	Table.set("BB X1", imIndex, width);
-	Table.set("BB Y0", imIndex, 0);
-	Table.set("BB Y2", imIndex, height);
-	Table.update;
 	// Have the user enter the number of hair cells included in the analysis
 	/*
 	Dialog.create("Get Analysis Info");
@@ -873,12 +877,10 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	// 3. Open the zstack and preprocess for the user
 	// .  Make sure the user knows which settings to use for bioformats
 	// .  Load XYZ data
-	/*
 	waitForUser("Beginning thumbnail generation process.\n"+
 				"Please use the following settings for Bioformats Importer:\n"+
 				"- Open as Hyperstack\n- Use Default color settings\n - Do not split channels\n- Do not autoscale\n"+
 				"No boxes should be checked.");
-				*/
 	//    Open the raw image & get rid of channels that are not synaptic markers
 	open(batchpath+"RawImages/"+imName+".czi");
 	Stack.getDimensions(width, height, channels, slices, frames);
@@ -888,19 +890,15 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 		selectImage("C"+toString(ch)+"-"+imName+".czi");
 		if ((ch != synCh[0]) && (ch != synCh[1])){
 			close();
-		}//else{
-			// -- Subtract background from the entire z-stack
-			//run("Subtract Background...", "rolling="+rbRadius+" stack");
-		//}
+		}
 	}
 	// .  Create a composite image of the two synaptic marker channels
 	// .   c2 is green, c6 is magenta
 	cTwoIm = "C"+toString(synCh[0])+"-"+imName+".czi";
 	cSixIm = "C"+toString(synCh[1])+"-"+imName+".czi";
+	waitForUser("Make any necessary adjustments before thumbnail generation begins.\n"+
+				"Suggested steps include (1) background subtraction & (2) Adjusting Min-Max on brightness/contrast.");
 	run("Merge Channels...", "c2="+cTwoIm+" c6="+cSixIm+" create keep");
-	run("Make Composite");
-	// .  Allow the user to make any adjustments to the display properties before proceeding 
-	//waitForUser("Make any necessary adjustments to brightness/constrast, etc. before thumbnail generation begins.");
 	// 4. Generate the three different thumbnails for every XYZ (i.e., ch1, ch2, and composite
 	// .   Iterate through XYZs and perform cropping
 	wbIn = 0;  // counter for tracking the number of XYZs within bounds and cropped
@@ -911,6 +909,7 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 	for (i = 0; i < lengthOf(fsExt); i++) {
 		imTempName = tempImNames[i];
 		fs = fsExt[i];
+		// .  Iterate through the three different images to generate thumbnails from each
 		selectImage(imTempName+".czi");
 		for (j = 0; j < nXYZs; j++) {
 			// . Get the XYZ info
@@ -940,11 +939,16 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 						Table.update;
 						// Make a max projection for just this XYZ
 						selectImage(imTempName+".czi");
+						// For alternate types of project change to:
+						// "Sum Slices" or "Average Intensity"
 						run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
+						//run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Average Intensity]");
+						//run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Sum Slices]");
 						run("Flatten");
 						// Crop the region around the XYX
 					    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
 					    run("Crop");
+					    run("Subtract Background...", "rolling="+rbRadius);
 					    // Add cross hairs for center
 						setFont("SansSerif",3, "antiliased");
 					    setColor(255, 255, 0);
@@ -956,8 +960,14 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 						save(batchpath+"SAR.Thumbnails/"+imName+"."+fName+"/"+imName+".TN."+id+"."+fs+".png");
 						// Close images
 						close(imName+".TN."+id+"."+fs+".png");
+						// For alternate types of project change to:
+						// "SUM" or "AVG"
 						close("MAX_"+imTempName+"-1.czi");
 						close("MAX_"+imTempName+".czi");
+						//close("AVG_"+imTempName+"-1.czi");
+						//close("AVG_"+imTempName+".czi");
+						//close("SUM_"+imTempName+"-1.czi");
+						//close("SUM_"+imTempName+".czi");
 						wbIn++;
 						// Update the annotated MPI
 						//selectImage(imName+".RawMPI.tif");
