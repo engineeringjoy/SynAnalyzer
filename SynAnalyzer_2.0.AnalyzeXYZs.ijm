@@ -24,8 +24,8 @@
 // Default batch path
 defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/WSS/BatchAnalysis/SynAnalysis_BclwSNHL_NeonatalAAV/";
 // Thumbnail bounding box dimesions in um
-tnW = 3;
-tnH = 3;
+tnW = 1.5;
+tnH = 1.5;
 tnZ = 1.5;
 // Annotated Image Size - Currently based on the output width of the SynArray
 annImW = 1650;
@@ -224,7 +224,7 @@ function initSynAnalyzer() {
 				}	
 		    }
 		}
-		Table.save(dirAna+fBM);
+		Table.save(dirAna+fBM); 
 	}
 	return batchpath;
 }
@@ -249,7 +249,7 @@ function runBatch(batchpath) {
 	// *** ITERATE THROUGH THE AVAILABLE IMAGES ***
 	// Get the Batch Master list of images
 	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
-	ims = Table.getColumn("ImageName");
+	ims = Table.getColumn("ImageName"); 
 	// Get a list of images available to analyze
 	filelist = getFileList(batchpath+"RawImages/");
 	// Batch Mode Go 
