@@ -815,13 +815,12 @@ function verifyXYZMatch(batchpath, imName, fName, imIndex){
 	for (i = 0; i < tableRows; i++) {
 		id = Table.get("ID", i);
 		Table.set("SynapseStatus", i, "Synapse");
-		xPos = (Table.get("Position X", i)*(1/vxW));
-		//xPos=xPos+(xPos*2.222);
-		yPos = (Table.get("Position Y", i)*(1/vxW));
-		zPos = (Table.get("Position Z", i)*(1/vxD));
-		Table.set("Position X (voxels)", i, xPos);
-		Table.set("Position Y (voxels)", i, yPos);
-		Table.set("Position Z (voxels)", i, zPos);
+		xPos = (Table.get("Position X (voxels)", i));
+		yPos = (Table.get("Position Y (voxels)", i));
+		zPos = (Table.get("Position Z (voxels)", i));
+		//Table.set("Position X (voxels)", i, xPos);
+		//Table.set("Position Y (voxels)", i, yPos);
+		//Table.set("Position Z (voxels)", i, zPos);
 		Table.update;
 		// Add an annotation to the MPI for verification purposes
 		makePoint(xPos, yPos, "small yellow dot add");
@@ -941,14 +940,21 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 						selectImage(imTempName+".czi");
 						// For alternate types of project change to:
 						// "Sum Slices" or "Average Intensity"
-						run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
+						//run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
 						//run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Average Intensity]");
-						//run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Sum Slices]");
+						run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Sum Slices]");
 						run("Flatten");
 						// Crop the region around the XYX
 					    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
 					    run("Crop");
 					    run("Subtract Background...", "rolling="+rbRadius);
+					    if (i==0){
+					    	run("8-bit");
+					    	run("Green");
+					    }else if (i==1){
+					    	run("8-bit");
+					    	run("Magenta");
+					    }
 					    // Add cross hairs for center
 						setFont("SansSerif",3, "antiliased");
 					    setColor(255, 255, 0);
@@ -962,12 +968,12 @@ function genThumbnails(batchpath, imName, fName, imIndex) {
 						close(imName+".TN."+id+"."+fs+".png");
 						// For alternate types of project change to:
 						// "SUM" or "AVG"
-						close("MAX_"+imTempName+"-1.czi");
-						close("MAX_"+imTempName+".czi");
+						//close("MAX_"+imTempName+"-1.czi");
+						//close("MAX_"+imTempName+".czi");
 						//close("AVG_"+imTempName+"-1.czi");
 						//close("AVG_"+imTempName+".czi");
-						//close("SUM_"+imTempName+"-1.czi");
-						//close("SUM_"+imTempName+".czi");
+						close("SUM_"+imTempName+"-1.czi");
+						close("SUM_"+imTempName+".czi");
 						wbIn++;
 						// Update the annotated MPI
 						//selectImage(imName+".RawMPI.tif");
