@@ -34,6 +34,20 @@
 // *** USER PRESETS ***
 // Default batch path
 defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/WSS/BatchAnalysis/SynAnalysis_TestBatch/";
+// Subdirectory folder names 
+sdXYZs = "XYZCSVs/";
+sdRI = "RawImages/";
+sdMD = "Metadata/";
+sdAna = "SAR.Analysis/";
+sdSI = "SAR.SummaryImages/";
+sdSA = "SAR.SynArrays/";
+sdPM = "SAR.PillarModiolarMaps/";
+sdAM = "SAR.AnnotatedMPIs/";
+sdPA = "SAR.POIAnnotations/";            
+sdRM = "SAR.RawMPIs/";
+sdTN = "SAR.Thumbnails/";
+// Batch Master file name
+fBM = "SynAnalyzerBatchMaster.csv";
 // Thumbnail bounding box dimesions in um
 tnW = 2;
 tnH = 2;
@@ -77,7 +91,7 @@ while (choice != "EXIT") {
 		runAnalysis("Batch", batchpath);
 	}else if (choice == "Specific Image") {
 		// Specific Image mode allows the user to select a specific image and only analyzes that one.
-		runAnalysis("Specific", batchpath);
+		runAnalysis("Specific Image", batchpath);
 	}
 	choice = getUserChoice();
 }
@@ -102,20 +116,20 @@ function initSynAnalyzer() {
 	batchpath = Dialog.getString();
 	
 	// *** SETUP PATHNAMES FOR SUBDIRECTORIES ***
-	dirIms = batchpath+"RawImages/";
-	dirMD = batchpath+"Metadata/";
-	dirAna = batchpath+"SAR.Analysis/";
-	dirSI = batchpath+"SAR.SummaryImages/";
-	dirSA = batchpath+"SAR.SynArrays/";
-	dirPM = batchpath+"SAR.PillarModiolarMaps/";
-	dirAM = batchpath+"SAR.AnnotatedMPIs/";
-	dirPA = batchpath+"SAR.POIAnnotations/";            // Point of interest annotations - stores CSV of details for each surface
-	dirRM = batchpath+"SAR.RawMPIs/";
-	dirTN = batchpath+"SAR.Thumbnails/";
-	fBM = "SynAnalyzerBatchMaster.csv";
-	
+	dirIms = batchpath+sdRI;
+	dirMD = batchpath+sdMD;
+	dirAna = batchpath+sdAna;
+	dirSI = batchpath+sdSI;
+	dirSA = batchpath+sdSA;
+	dirPM = batchpath+sdPM;
+	dirAM = batchpath+sdAM;
+	dirPA = batchpath+sdPA;            // Point of interest annotations - stores CSV of details for each surface
+	dirRM = batchpath+sdRM;
+	dirTN = batchpath+sdTN;
+
 	// *** GET LIST OF BATCH IMAGES ***
-	filelist = getFileList(dirIms);
+	fileList = getFileList(dirIms);
+	fileCount = lengthOf(fileList);
 	
 	// *** INITIALIZE BATCH FOLDER IF IT HASN'T BEEN DONE ***
 	// *** CREATE SUBFOLDERS IF THEY DO NOT EXIST ***
@@ -129,13 +143,13 @@ function initSynAnalyzer() {
 		File.makeDirectory(dirTN);
 		// *** SETUP BATCH MASTER RESULTS TABLE ***
 		Table.create("SynAnalyzerBatchMaster.csv");
-		for (i = 0; i < lengthOf(filelist); i++) {
-		    if (endsWith(filelist[i], ".czi")) {
+		for (i = 0; i < fileCount; i++) {
+		    if (endsWith(fileList[i], ".czi")) {
 		    	// Iterate through the columns in the preset array and setup table 
 		    	for (j = 0; j < cols; j++) {
 		    		// First column should be image name
 		    		if (j==0){
-		    			Table.set(bmCols[j], i, filelist[i]);
+		    			Table.set(bmCols[j], i, fileList[i]);
 		    		}else if (j==1){
 		    			Table.set(bmCols[j], i, "No");
 		    		}else{
@@ -144,41 +158,43 @@ function initSynAnalyzer() {
 		    	}
 			} 
 		}
+		Table.update;
 		Table.save(dirAna+fBM);
 	} else { 
-		Table.open(dirAna+fBM);
 		// *** CHECK IF THERE ARE ADDITIONAL IMAGES THAT SHOULD BE ADDED ***
 		// Get the list of images currently in the table
-		ims = Table.getColumn("ImageName");
+		Table.open(dirAna+fBM);
+		imList = Table.getColumn("ImageName");
 		// Iterate through every file from the list of files in the RawImages directory
-		for (i = 0; i < lengthOf(filelist); i++) {
+		for (i = 0; i < fileCount; i++) {
 			// Boolean Value
 			bool = "False";
-		    if (endsWith(filelist[i], ".czi")) { 
+		    if (endsWith(fileList[i], imFType)) { 
 		        // Check if the current file in question is in the list of existing images
-		        for (j = 0; j < lengthOf(ims); j++) {
-					if (filelist[i] == ims[j]) {
+		        for (j = 0; j < lengthOf(imList); j++) {
+					if (fileList[i] == imList[j]) {
 						bool = "True";
 					}
 				}
-				// Add the filename to the table if bool did not switch to being true
-				// FUTURE WORK: TURN THIS INTO A FOR LOOP THAT ITERATES THROUGH ARRAY WITH COLUMN NAMES
+				// If file has not been registered, add it to Batch Master
 				if (bool == "False") {
 					row = Table.size;
 					for (j = 0; j < cols; j++) {
-			    		// First column should be image name
 			    		if (j==0){
-			    			Table.set(bmCols[j], i, filelist[i]);
+			    			Table.set(bmCols[j], i, fileList[i]);
 			    		}else if (j==1){
 			    			Table.set(bmCols[j], i, "No");
 			    		}else{
 							Table.set(bmCols[j], i, "TBD");
 			    		}
 			    	}
+				Table.update;
+				Table.save(dirAna+fBM);
 				}
 		    }
 		}
-		
+	}
+	close("*.csv");	
 	return batchpath;
 }
 		
@@ -197,42 +213,197 @@ function getUserChoice(){
 // RUN ANALYSIS -- FX FOR STEPPING THROUGH ANALYSIS FUNCTIONS
 function runAnalysis(mode, batchpath){
 	// 1. Get list of registered images
-	Table.open(batchpath+"/SAR.Analysis/"+"SynAnalyzerBatchMaster.csv");
-	ims = Table.getColumn("ImageName"); 
-	close(".csv");
+	Table.open(batchpath+sdAna+fBM);
+	imList = Table.getColumn("ImageName"); 
+	close("*.csv");
 	//  . Get list of files available
-	filelist = getFileList(batchpath+"RawImages/");
+	fileList = getFileList(batchpath+sdRI);
+	fileCount = lengthOf(fileList);
 	// 2. Setup trackers for while loop
 	//  . Set batch to "Go" to enter while loop at least once
 	batch = "Go";
 	//  . Set counter for iterating through all files
 	i = 0; 
-	// 3. Go through while loop once for specific image mode, or until the user says stop for batch mode
+	// 3. Go through while loop once for specific image mode, until the user says stop for batch mode,
+	//    or until all files have been checked for batch mode.
 	while (batch != "Exit") {
 		// 3.1 Allow user to choose image if specific image mode is running
-		if (mode == "Specific Image"){
+		if(mode == "Specific Image"){
 			Dialog.create("Choose a file to analyze")
-			Dialog.addChoice("Available Files", filelist);
+			Dialog.addChoice("Available Files", fileList);
 			Dialog.show();
-			file = Dialog.getChoice();
+			fileName = Dialog.getChoice();
 			// Set batch to Stop so that it exists the while-loop after analysis
 			batch = "Exit";
 		}else if (mode == "Batch"){
-			file = filelist[i];
+			fileName = fileList[i];
 		}
-		// 3.2 Verify that the image file is available and has matching XYZ datasets
-		imStatus = verifyIm(batchpath, file);
+		// 3.2 Verify that the image file is available and has been registered
+		vfReturn = verifyFile(batchpath, fileName, imList);
+		fStatus = vfReturn[0];
+		imIndex = vfReturn[1];
+		if(fStatus == "Acceptable"){
+			print("File "+fileName+" is valid and has been registered. Proceeding with analysis.");
+			// 3.2.1. Initialize the image
+			initializeIm(batchpath, fileName, imIndex);
+			i++;
+		}else if(fStatus == "Unregistered"){
+			print("File "+fileName+" is valid type but has not been registered.\n"+
+				  "Restart macro to register image with Batch Master.");
+		    batch = "Exit";
+		}else{
+			if(mode=="Batch"){
+				print("Skipping "+fileName+". Invalid file type.");
+				i++;
+			}else{
+				print(fStatus);
+				batch = "Exit";
+			}
+		}
+		// 3.3 Stop batch mode if all of the images have been iterated through
+		if((mode == "Batch") && (i<fileCount)){
+			choiceArray = newArray("Go", "Stop");
+			Dialog.create("Checkin");
+			Dialog.addRadioButtonGroup("Proceed with batch mode?", choiceArray, 2, 1, "Go");
+			Dialog.show();
+			batch = Dialog.getRadioButton();
+		}else if ((mode == "Batch") && (i==fileCount)){
+			batch = "Exit";
+			print("All available files have been checked for analysis. Exiting batch mode.");
+		}
 	}
 }
 
 // VERIFY FILE -- FX FOR CHECKING THAT FILE CAN BE ANALYZED
-function verifyIm(batchpath, file){
+function verifyFile(batchpath, fileName, imList){
 	// 1. Notify user that image verification is beginning
 	waitForUser("Proceeding with Image Verification");
 	// 2. Check that the file type is acceptable
-	if (endsWith(file, imFType)) { 
-	
-	return status;
+	if (endsWith(fileName, imFType)) { 
+		// 2.1 If the file is an acceptable format, proceed with verifying registration
+		//  . Iterate through imList and check if file has been registered
+		imCount = lengthOf(imList);
+		//  . Set default status to unregistered
+		fStatus = "Unregistered";
+		for (i = 0; i < imCount; i++) {
+			// . Check if file matches imagename
+			if (fileName == imList[i]) {
+				// . Update status for the file
+				fStatus = "Acceptable";
+				// . Get the index of the image
+				imIndex = i;
+				// . Set the count to max to exit the for-loop
+				i = imCount;
+			}
+		}
+	}else{
+		fStatus = "Invalid file type";
+		imIndex = imCount+1;
+	}
+	returnArray = newArray(fStatus, imIndex);
+	return returnArray;
+}
+
+// INITIALIZE IMAGE -- FX FOR SETTING UP IMAGE FOR ANALYSIS 
+function initializeIm(batchpath, fileName, imIndex){
+	// 1. Notify user that image initialization is beginning
+	waitForUser("Initializing image "+ fileName);
+	// 2. Check if the image has already been initialized
+	Table.open(batchpath+sdAna+fBM);
+	xyzStatus = Table.getString("AvailXYZData", imIndex);
+	close("*.csv");
+	// 3. Determine how to proceed if already initialized
+	if(xyzStatus!="TBD"){
+		// . Check in with user 
+		Dialog.create("Check to proceed");
+		Dialog.addString("Image has bee initialized. Repeat the process?", "Yes");
+		Dialog.show();
+		check = Dialog.getString();
+		if (check == "Yes"){
+			// Update information about the analysis for this image
+			xyzStatus == "TBD";
+		}else{
+			imStatus = "Skip";
+		}
+	}
+	// 4. Check for available XYZ datasets
+	if(xyzStatus=="TBD"){
+		imName = substring(fileName, 0, indexOf(fileName, ".czi"));
+		pESxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PreSyn.csv";
+		pTSxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PostSyn.csv";
+		xyzFiles = newArray("PreSyn", "PostSyn");
+		// . Check for pre-synaptic XYZ data
+		if (File.exists(pESxyz)) {
+			// . Check if it also has postsynaptic XYZ data
+			if (File.exists(pTSxyz)) {
+				adXYZ ="Both Pre- and Post-";
+				xyzFCount = 2;
+			}else{
+				adXYZ ="Only Pre-";
+				xyzFCount = 1;
+				xyzFiles = xyzFiles[0];
+			}
+		}else if(File.exists(pTSxyz)){ 
+			adXYZ ="Only Post-";
+			xyzFCount = 1;
+			xyzFiles = xyzFiles[1];
+		}else{
+			adXYZ ="None";
+		}
+		// . Update information about the analysis for this image
+		Table.open(batchpath+sdAna+fBM);
+		Table.set("AvailXYZData", imIndex, adXYZ);
+		Table.update;
+		Table.save(batchpath+sdAna+fBM);
+		// 4.1 Initialize image information
+		if (adXYZ=="None"){
+			// . The Batch Master list needs to be updated. Easiest is to have the user restart. 
+			print(imName+" exists but does not have XYZ data associated with the image.");
+			imStatus = "Skip";
+		}else{
+			// . Open the image and get basic information
+			open(batchpath+sdRI+fileName);
+			getVoxelSize(vxW, vxH, vxD, unit);
+			Stack.getDimensions(width, height, channels, slices, frames);
+			// . Ask the user for z-slices to include
+			Dialog.create("Get Analysis Info");
+			Dialog.addMessage("Indicate the slices to include in the analysis region.");
+			Dialog.addString("Slice Start","1");
+			Dialog.addString("Slice End", slices);
+			Dialog.show();
+			slStart = Dialog.getString();
+			slEnd = Dialog.getString();
+			// . Add image information to the table
+			Table.set("ZStart", imIndex, slStart);
+			Table.set("ZEnd", imIndex, slEnd);
+			Table.set("Voxel Width (um)", imIndex, vxW);
+			Table.set("Voxel Depth (um)", imIndex, vxD);
+			Table.update;
+			// . Create a max projection of the image
+			waitForUser("Adjust the brightness/contrast of the image as necessary for the maximum projection.");
+			run("Make Substack...", "slices="+slStart+"-"+slEnd);
+			run("Z Project...", "projection=[Max Intensity]");
+			run("Make Composite");
+			run("Flatten");
+			save(batchpath+sdRM+imName+".RawMPI.tif");
+			close("*");
+			// . Verify that XYZ datasets match the image
+			for (i = 0; i < lengthOf(xyzFiles); i++) {
+				// Open the substack MPI for labelling purposes
+				open(batchpath+sdRM+imName+".RawMPI.tif");
+				// Load the raw XYZ points
+				Table.open(batchpath+sdXYZs+imName+".XYZ."+xyzFiles[i]+".csv");
+				// Save a clean version of the XYZ file to add analysis info
+				Table.save(batchpath+"SAR.Analysis/"+imName+".XYZ."+xyzFiles[i]+".csv");
+				// Iterate through the rows of the XYZ table and add points to image
+				//  also adding converted positions in this step for ease 
+				tableRows = Table.size;
+				Table.sort("ID");
+				Table.update;
+			}
+		}
+	}
+	return imStatus;
 }
 
 
@@ -244,5 +415,12 @@ function verifyIm(batchpath, file){
 
 
 
-	
-}
+
+
+
+
+
+
+
+
+
