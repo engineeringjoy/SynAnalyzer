@@ -36,8 +36,9 @@
 defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/WSS/BatchAnalysis/SynAnalysis_TestBatch/";
 // Subdirectory folder names 
 sdXYZs = "XYZCSVs/";
-sdRI = "RawImages/";
 sdMD = "Metadata/";
+sdRI = "RawImages/";
+sdTIF = "SAR.AdjTifs/";
 sdAna = "SAR.Analysis/";
 sdSI = "SAR.SummaryImages/";
 sdSA = "SAR.SynArrays/";
@@ -76,7 +77,7 @@ defSynCh="[1,4]";
 defTerCh="[2,4]";
 // Default LUT assignments for thumbnails: c2 = green, c5 = cyan, c6 = magenta, c7 = yellow
 defSynLUT = newArray("c2","c6");
-defTerLUT = newArray("c6","c5");
+defTerLUT = newArray("c5","c6");
 // Default extensions to add to thumbnails when saving
 defTNExt = newArray("C1", "C2", "Comp");
 tnExtCount = lengthOf(defTNExt);
@@ -128,8 +129,9 @@ function initSynAnalyzer() {
 	batchpath = Dialog.getString();
 	
 	// *** SETUP PATHNAMES FOR SUBDIRECTORIES ***
-	dirIms = batchpath+sdRI;
 	dirMD = batchpath+sdMD;
+	dirIms = batchpath+sdRI;
+	dirTIF = batchpath+sdTIF;
 	dirAna = batchpath+sdAna;
 	dirSI = batchpath+sdSI;
 	dirSA = batchpath+sdSA;
@@ -147,6 +149,7 @@ function initSynAnalyzer() {
 	// *** CREATE SUBFOLDERS IF THEY DO NOT EXIST ***
 	if (!File.isDirectory(dirAna)) {
 		File.makeDirectory(dirAna);
+		File.makeDirectory(dirTIF);
 		File.makeDirectory(dirSI);
 		File.makeDirectory(dirSA);
 		File.makeDirectory(dirPM);
@@ -291,8 +294,6 @@ function runAnalysis(mode, batchpath){
 
 // VERIFY FILE -- FX FOR CHECKING THAT FILE CAN BE ANALYZED
 function verifyFile(batchpath, fileName, imList){
-	// 1. Notify user that image verification is beginning
-	waitForUser("Proceeding with Image Verification");
 	// 2. Check that the file type is acceptable
 	if (endsWith(fileName, imFType)) { 
 		// 2.1 If the file is an acceptable format, proceed with verifying registration
@@ -321,8 +322,6 @@ function verifyFile(batchpath, fileName, imList){
 
 // INITIALIZE IMAGE -- FX FOR SETTING UP IMAGE FOR ANALYSIS 
 function initializeIm(batchpath, imName, imIndex){
-	// 1. Notify user that image initialization is beginning
-	waitForUser("Initializing image "+ imName);
 	// 2. Check if the image has already been initialized
 	Table.open(batchpath+sdAna+fBM);
 	imStatus = Table.getString("ImInitialized?", imIndex);
@@ -377,13 +376,16 @@ function initializeIm(batchpath, imName, imIndex){
 		}else{
 			// . GET INFORMATION ABOUT THE IMAGE & WHAT TO ANALYZE
 			// . Open the image and get basic information
+			waitForUser("!Wait to click ok! When Bio-Formats opens, ensure that default settings are used,\n"+
+						"and that no boxes are checked. Do not split channels and do not autoscale.");
 			open(batchpath+sdRI+imName+imFType);
 			getVoxelSize(vxW, vxH, vxD, unit);
 			Stack.getDimensions(width, height, channels, slices, frames);
+			run("Split Channels");
+			waitForUser("!WAIT TO CLICK OK! Perform stack-wide background subtraction & brightness contrast adjustments.\n"+
+						"The adjustments set here will be used for all subsequent analysis steps.");
+			run("Merge Channels...", "c2=C1-"+imName+imFType+" c3=C2-"+imName+imFType+" c5=C3-"+imName+imFType+" c6=C4-"+imName+imFType);
 			// . Ask the user for z-slices to include
-			waitForUser("Review the z-stack & choose z-slice range for substack.\n"+
-						"Adjust the brightness/contrast of the image as necessary\n"+
-						"for the maximum projection that will be annotated.");
 			Dialog.create("Get Analysis Info");
 			Dialog.addMessage("Indicate the slices to include in the analysis region.");
 			Dialog.addString("Slice Start","1");
@@ -401,6 +403,7 @@ function initializeIm(batchpath, imName, imIndex){
 			close("*.csv");
 			// 4.2 CREATE A MAXIMUM PROJECTION OF THE IMAGE FOR ANNOTATION
 			run("Make Substack...", "slices="+slStart+"-"+slEnd);
+			save(batchpath+sdTIF+imName+".UserAdj.tif");
 			run("Z Project...", "projection=[Max Intensity]");
 			run("Make Composite");
 			run("Flatten");
@@ -528,7 +531,9 @@ function genThumbnails(batchpath, imName, imIndex){
 				include = Dialog.getString();
 				if (include == "Yes"){
 					// 1.3.01 Setup subfolder for storing thumbnails associated with this image/XYZ set
-					File.makeDirectory(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/");
+					if (!File.isDirectory(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/")) {
+						File.makeDirectory(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/");
+					}
 					// 1.3.1 Get the information from the dialog box & add to Batch Master
 					chStr = Dialog.getString();
 					chArr = split(chStr, "'[',',',']',' ',");
@@ -538,13 +543,9 @@ function genThumbnails(batchpath, imName, imIndex){
 					Table.update;
 					Table.save(batchpath+sdAna+fBM);
 					close("*.csv");
-					// 1.3.2 Open the zstack and ask the user to preprocess, then generate the necessary images for thumbnail generation
-					waitForUser("Beginning thumbnail generation process.\n"+
-								"Please use the following settings for Bioformats Importer:\n"+
-								"- Open as Hyperstack\n- Use Default color settings\n - Do not split channels\n- Do not autoscale\n"+
-								"No boxes should be checked.");
-					// . Open the raw image & get rid of channels that are not synaptic markers
-					open(batchpath+sdRI+imName+imFType);
+					// 1.3.2 Open the raw image & get rid of channels that are not synaptic markers
+					open(batchpath+sdTIF+imName+".UserAdj.tif");
+					rename(imName+imFType);
 					Stack.getDimensions(width, height, channels, slices, frames);
 					run("Split Channels");
 					for (k = 0; k < channels; k++) {
@@ -576,8 +577,6 @@ function genThumbnails(batchpath, imName, imIndex){
 							compChArr[k+1]=imName+imFType;
 						}
 					}
-					waitForUser("Make any necessary adjustments before thumbnail generation begins.\n"+
-								"Suggested steps include (1) background subtraction & (2) Adjusting Min-Max on brightness/contrast.");
 					run("Merge Channels...", compChStr+" create keep ignore");
 					rename(imName+imFType);
 					// 1.3.3 Generate the thumbnails for each of the available images
