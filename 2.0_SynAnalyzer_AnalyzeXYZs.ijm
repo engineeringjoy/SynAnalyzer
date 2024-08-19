@@ -262,8 +262,14 @@ function runAnalysis(mode, batchpath){
 			print("File "+imName+" is valid and has been registered. Proceeding with analysis.");
 			// 3.2.1. Initialize the image
 			initializeIm(batchpath, imName, imIndex);
-			// 3.2.2. Generate thumbnails for synaptic markers
+			// 3.2.2. Generate thumbnails 
 			genThumbnails(batchpath, imName, imIndex);
+			// 3.2.3. Generate arrays
+			genArray(batchpath, imName, imIndex);
+			// 3.2.4. Walk user through the process of reviewing arrays and assigning synapse/terminal status
+			reviewArrays(batchpath, imName, imIndex);
+			
+			// Increase counter to move on to next file in fileList
 			i++;
 		}else if(fStatus == "Unregistered"){
 			print("File "+fileName+" is valid type but has not been registered.\n"+
@@ -647,18 +653,17 @@ function genThumbnails(batchpath, imName, imIndex){
 										close("SUM_"+imTempName);
 									}else{
 										// XYZ is not within Z bounds
-										Table.set("XYZinROI?", l, "No");
+										//Table.set("XYZinROI?", l, "No");
 									}
 								}else{
 									// XYZ is not within Y bounds
-									Table.set("XYZinROI?", l, "No");
+									//Table.set("XYZinROI?", l, "No");
 								}
 							}else{
 								// XYZ is not within X bounds
-								Table.set("XYZinROI?", l, "No");
+								//Table.set("XYZinROI?", l, "No");
 							}
 						}
-					
 					}
 					// . Close unnecessary images
 					for (k = 0; k < tnExtCount; k++) {
@@ -674,6 +679,113 @@ function genThumbnails(batchpath, imName, imIndex){
 					Table.update;
 					Table.save(batchpath+sdAna+fBM);
 					close("*.csv");
+				}
+			}
+		}
+	}
+}
+
+// GEN ARRAYS -- FX FOR GENERATING ARRAYS FOR AVAILABLE THUMBNAILS
+function genArray(batchpath, imName, imIndex){
+	// 1. Check with user to proceed with thumbnail generation
+	Dialog.create("Checkin");
+	Dialog.addRadioButtonGroup("Proceed with array generation?", newArray("Yes", "No"), 2, 1, "Yes");
+	Dialog.show();
+	if(Dialog.getRadioButton()=="Yes"){
+		// 1.1 Get available XYZ data information
+		Table.open(batchpath+sdAna+fBM);
+		xyzStatus = Table.getString("AvailXYZData", imIndex);
+		close("*.csv");
+		if(xyzStatus == "Both Pre- and Post-"){
+			availXYZ = newArray("PreSyn", "PostSyn");
+		}else if(xyzStatus == "Only Pre-"){
+			availXYZ = newArray("PreSyn");
+		}else if(xyzStatus == "Only Post-"){
+			availXYZ = newArray("PostSyn");
+		}
+		xyzFCount = lengthOf(availXYZ);
+		// 1.2 Iterate through possibile array generation steps for thumbnails
+		tnSteps = newArray("Synaptic","Terminal");
+		tnCount = lengthOf(tnSteps);
+		for (i = 0; i < tnCount; i++) {
+			for (j = 0; j < xyzFCount; j++) {
+				Dialog.create("Checkin");
+				Dialog.addString("Generate "+tnSteps[i]+" array for "+availXYZ[j]+" XYZs?","Yes");
+				Dialog.show();
+				include = Dialog.getString();
+				if (include == "Yes"){
+					// 1.3.0 Verify that directory with thumbnails is available
+					if (File.isDirectory(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/")) {
+						// 1.3.1 Generate thumbnail arrays for each "channel"
+						for (k = 0; k < tnExtCount; k++) {
+							fs = defTNExt[k];
+							// 1.3.1.1 Iterate through all of the XYZs and open the appropriate images
+							Table.open(batchpath+sdAna+imName+".XYZ."+availXYZ[j]+".csv");
+							nXYZs = Table.size;
+							for (l = 0; l < nXYZs; l++) {
+								inBounds = Table.getString("XYZinROI?", l);
+								if (inBounds=="Yes"){
+									id = Table.getString("ID", l);
+									if(File.exists(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/"+imName+".TN."+id+"."+fs+".png")){
+										open(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/"+imName+".TN."+id+"."+fs+".png");
+									}
+								}
+							}
+							// Once all images are open, create the array
+							run("Images to Stack", "use");
+							Stack.getDimensions(width, height, channels, slices, frames);
+							nRows = -floor(-(slices/10));
+							run("Make Montage...", "columns=10 rows="+nRows+" scale=2");
+							save(batchpath+sdSA+imName+"."+tnSteps[i]+"Array."+availXYZ[j]+"."+fs+".png");
+							close("*");
+						}
+						close("*.csv");
+					}
+				}
+			}
+		}
+	}
+}
+
+// REVIEW ARRAYS -- FX FOR REVIEWING ARRAYS AND DENOTING STATUS
+function reviewArrays(batchpath, imName, imIndex){
+	// 1. Check with user to proceed with thumbnail generation
+	Dialog.create("Checkin");
+	Dialog.addRadioButtonGroup("Proceed with array review?", newArray("Yes", "No"), 2, 1, "Yes");
+	Dialog.show();
+	if(Dialog.getRadioButton()=="Yes"){
+		// 1.1 Get available XYZ data information
+		Table.open(batchpath+sdAna+fBM);
+		xyzStatus = Table.getString("AvailXYZData", imIndex);
+		close("*.csv");
+		if(xyzStatus == "Both Pre- and Post-"){
+			availXYZ = newArray("PreSyn", "PostSyn");
+		}else if(xyzStatus == "Only Pre-"){
+			availXYZ = newArray("PreSyn");
+		}else if(xyzStatus == "Only Post-"){
+			availXYZ = newArray("PostSyn");
+		}
+		xyzFCount = lengthOf(availXYZ);
+		// 1.2 Iterate through possibile thumbnail arrays
+		tnSteps = newArray("Synaptic","Terminal");
+		tnCount = lengthOf(tnSteps);
+		for (i = 0; i < tnCount; i++) {
+			// 1.2.1 Iterate through the possible XYZ data sets
+			for (j = 0; j < xyzFCount; j++) {
+				fs = defTNExt[0];
+				// 1.2.2 Verify that the array file exists
+				if(File.exists(batchpath+sdSA+imName+"."+tnSteps[i]+"Array."+availXYZ[j]+"."+fs+".png")){
+					Dialog.create("Checkin");
+					Dialog.addString("Review "+tnSteps[i]+" array for "+availXYZ[j]+" XYZs?","Yes");
+					Dialog.show();
+					include = Dialog.getString();
+					if (include == "Yes"){
+						// 1.2.3. Open all versions of the array and create stack for user review
+						for (l = 0; l < tnExtCount; l++) {
+							open(batchpath+sdSA+imName+"."+tnSteps[i]+"Array."+availXYZ[j]+"."+defTNExt[l]+".png");
+						}
+						run("Images to Stack", "use");
+					}
 				}
 			}
 		}
