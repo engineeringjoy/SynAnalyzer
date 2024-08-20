@@ -987,9 +987,15 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 		Roi.getCoordinates(xpoints, ypoints);
 		xSt = xpoints[0];
 		xEnd = xpoints[1];
+		bbXZ = xpoints[0];
+		bbXO = xpoints[1];
+		bbYZ = ypoints[0];
+		bbYT = ypoints[2];
 		close();
 		// 1.3 Get available XYZ data information
 		xyzStatus = Table.getString("AvailXYZData", imIndex);
+		slStart = Table.get("ZStart", imIndex);
+		slEnd = Table.get("ZEnd", imIndex);
 		close("*.csv");
 		if(xyzStatus == "Both Pre- and Post-"){
 			availXYZ = newArray("PreSyn", "PostSyn");
@@ -1091,39 +1097,46 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 			pCount = 0;
 			mCount = 0;
 			for (j = 0; j < nXYZs; j++) {
-				// . Check if the XYZ should be included
-				valid = Table.getString("XYZinROI?", j);
-				if (valid == "Yes") {
-					id = Table.get("ID", j);
-					// New coordinate system means original x-coords are now y
-					// . will need to add info in Readme about this
-					xPos = Table.get("Position Y (voxels)", j);
-					// The y-coord is weird because it was z-coord prior to the transformation
-					//  and the reslicing generates pixels in the new y-direction using interpolation.
-					// . So now thew new y-coordinate has to be scaled and subracted from the total image height. 
-					yPos = height-(Table.get("Position Z", j))/pixH;
-					// Now we determine if it's above or below the AB-axis
-					if(yPos > ((pSlope*xPos)+pInt)){
-						// Add an annotation to the MPI for verification purposes
-						makePoint(xPos, yPos, "medium yellow dot add");
-						setFont("SansSerif",8, "antiliased");
-					    setColor(255, 255, 255);
-						drawString(id, xPos, yPos);
-						Table.set("PMStatus", j, "Pillar");
-						Table.update;
-						pCount++;
-					}else{
-						// Add an annotation to the MPI for verification purposes
-						makePoint(xPos, yPos, "medium white dot add");
-						setFont("SansSerif",8, "antiliased");
-					    setColor(255, 255, 255);
-						drawString(id, xPos, yPos);
-						Table.set("PMStatus", j, "Modiolar");
-						Table.update;
-						mCount++;
+				xPos = Table.get("Position X (voxels)", j);
+				yPos = Table.get("Position Y (voxels)", j);
+				slZ = Table.get("Position Z (voxels)", j);
+				// . Verify that the XYZ is within the user defined main bounding box
+				if ((xPos >= bbXZ) && (xPos <= bbXO)) { 
+					if ((yPos >= bbYZ) && (yPos <= bbYT)) {
+						if ((slZ >= slStart) && (slZ <= slEnd)){
+							id = Table.get("ID", j);
+							// New coordinate system means original x-coords are now y
+							// . will need to add info in Readme about this
+							xPos = Table.get("Position Y (voxels)", j);
+							// The y-coord is weird because it was z-coord prior to the transformation
+							//  and the reslicing generates pixels in the new y-direction using interpolation.
+							// . So now thew new y-coordinate has to be scaled and subracted from the total image height. 
+							yPos = height-(Table.get("Position Z", j))/pixH;
+							// Now we determine if it's above or below the AB-axis
+							if(yPos > ((pSlope*xPos)+pInt)){
+								// Add an annotation to the MPI for verification purposes
+								makePoint(xPos, yPos, "medium yellow dot add");
+								setFont("SansSerif",8, "antiliased");
+							    setColor(255, 255, 255);
+								drawString(id, xPos, yPos);
+								Table.set("PMStatus", j, "Pillar");
+								Table.update;
+								pCount++;
+							}else{
+								// Add an annotation to the MPI for verification purposes
+								makePoint(xPos, yPos, "medium white dot add");
+								setFont("SansSerif",8, "antiliased");
+							    setColor(255, 255, 255);
+								drawString(id, xPos, yPos);
+								Table.set("Pillar-ModiolarStatus", j, "Modiolar");
+								Table.update;
+								mCount++;
+							}
+						}
 					}
 				}
 			}
+			Table.save(batchpath+sdAna+imName+".XYZ."+availXYZ[i]+".csv");
 			// 1.4.6 Rescale the image and save with annotations
 			getDimensions(width, height, channels, slices, frames);
 			// . Calculate the scaling factor and output dimensions
