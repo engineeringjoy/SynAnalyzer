@@ -69,7 +69,8 @@ bmCols = newArray("ImageName","ImInitialized?", "Analyzed?", "PreSynAnaComplete?
 				  "PreSynXYZ", "PostSynXYZ", "PreSyn_nSynapses", "PostSyn_nSynapses", 
 				  "PreSyn_nDoublets", "PostSyn_nDoublets",  "PreSyn_nOrphans", "PostSyn_nOrphans",
 				  "PreSyn_nGarbage",  "PostSyn_nGarbage",  "PreSyn_nUnclear", "PostSyn_nUnclear",  
-				  "PreSyn_nWMarker",  "PostSyn_nWMarker", 
+				  "PreSyn_nPMarker",  "PostSyn_nPMarker", "PreSyn_nNMarker", "PostSyn_nNMarker",
+				  "PreSyn_uncMarker", "PostSyn_uncMarker",
 				  "PreSyn_nPillar", "PreSyn_nModiolar", "PostSyn_nPillar", "PostSyn_nModiolar");
 cols = lengthOf(bmCols);
 // Default channel arrays for analysis
@@ -84,6 +85,10 @@ tnExtCount = lengthOf(defTNExt);
 // Default LUT to assign to summed intensity thumbnails
 defSynColors = newArray("Green", "Magenta");
 defTerColors = newArray("Cyan", "Magenta");
+// Default channels for pillar-modiolar mapping
+defPMCh = "[2,3]";
+// Default LUT for pillar-modiolar mapping
+defPMLUT = newArray("c5","c3");
 
 // *** HOUSEKEEPING ***
 run("Close All");
@@ -268,7 +273,9 @@ function runAnalysis(mode, batchpath){
 			genArray(batchpath, imName, imIndex);
 			// 3.2.4. Walk user through the process of reviewing arrays and assigning synapse/terminal status
 			reviewArrays(batchpath, imName, imIndex);
-			
+			// 3.2.5. Perform pillar-modiolar mapping
+			print("test");'
+			mapPillarModiolar(batchpath, imName, imIndex);
 			// Increase counter to move on to next file in fileList
 			i++;
 		}else if(fStatus == "Unregistered"){
@@ -440,7 +447,7 @@ function initializeIm(batchpath, imName, imIndex){
 					for (j = 0; j < xyzCount; j++) {
 						id = Table.get("ID", j);
 						Table.set("SynapseStatus", j, "TBD");
-						Table.set("TerminalMarkerStatus", j, "TBD");
+						Table.set("TerminalStatus", j, "TBD");
 						Table.set("PillarModiolarStatus", j, "TBD");
 						xPos = (Table.get("Position X (voxels)", j));
 						yPos = (Table.get("Position Y (voxels)", j));
@@ -549,7 +556,7 @@ function genThumbnails(batchpath, imName, imIndex){
 					Table.update;
 					Table.save(batchpath+sdAna+fBM);
 					close("*.csv");
-					// 1.3.2 Open the raw image & get rid of channels that are not synaptic markers
+					// 1.3.2 Open the image & get rid of channels that are not synaptic markers
 					open(batchpath+sdTIF+imName+".UserAdj.tif");
 					rename(imName+imFType);
 					Stack.getDimensions(width, height, channels, slices, frames);
@@ -691,7 +698,8 @@ function genArray(batchpath, imName, imIndex){
 	Dialog.create("Checkin");
 	Dialog.addRadioButtonGroup("Proceed with array generation?", newArray("Yes", "No"), 2, 1, "Yes");
 	Dialog.show();
-	if(Dialog.getRadioButton()=="Yes"){
+	proceed = Dialog.getRadioButton();
+	if(proceed=="Yes"){
 		// 1.1 Get available XYZ data information
 		Table.open(batchpath+sdAna+fBM);
 		xyzStatus = Table.getString("AvailXYZData", imIndex);
@@ -757,6 +765,7 @@ function reviewArrays(batchpath, imName, imIndex){
 		// 1.1 Get available XYZ data information
 		Table.open(batchpath+sdAna+fBM);
 		xyzStatus = Table.getString("AvailXYZData", imIndex);
+		print(Table.getString("ImageName", imIndex));
 		close("*.csv");
 		if(xyzStatus == "Both Pre- and Post-"){
 			availXYZ = newArray("PreSyn", "PostSyn");
@@ -769,6 +778,8 @@ function reviewArrays(batchpath, imName, imIndex){
 		// 1.2 Iterate through possibile thumbnail arrays
 		tnSteps = newArray("Synaptic","Terminal");
 		tnCount = lengthOf(tnSteps);
+		txtArr = newArray("Enter 'Synapse', 'Orphan','Doublet', 'Garbage', or a custom flag as needed.",
+						  "Enter 'Positive', 'Negative', or a custom flag as needed.");
 		for (i = 0; i < tnCount; i++) {
 			// 1.2.1 Iterate through the possible XYZ data sets
 			for (j = 0; j < xyzFCount; j++) {
@@ -780,14 +791,274 @@ function reviewArrays(batchpath, imName, imIndex){
 					Dialog.show();
 					include = Dialog.getString();
 					if (include == "Yes"){
-						// 1.2.3. Open all versions of the array and create stack for user review
-						for (l = 0; l < tnExtCount; l++) {
-							open(batchpath+sdSA+imName+"."+tnSteps[i]+"Array."+availXYZ[j]+"."+defTNExt[l]+".png");
+						// 1.2.2.1 Open all versions of the array and create stack for user review
+						for (k = 0; k < tnExtCount; k++) {
+							open(batchpath+sdSA+imName+"."+tnSteps[i]+"Array."+availXYZ[j]+"."+defTNExt[k]+".png");
 						}
 						run("Images to Stack", "use");
+					// 1.2.3 Have the user open the CSV file and manually update the information for each synapse
+					waitForUser("*DO NOT CLICK OK UNTIL ANNOTATION IS COMPLETE*\n"+
+								"Open the"+availXYZ[j]+" XYZ csv file for this image and edit the\n"+
+								"'"+tnSteps[i]+"Status' column.\n"+txtArr[i]+"\n"+
+								"Click ok when all XYZs have been reviewed AND the csv file has been saved\n"+
+								"(as a csv) and closed.\n"+
+								"Note: typos and/or incorrect lettercase may result in runtime errors.");
+					// 1.2.4 Iterate through the XYZs and count the numbers of each type
+					if(i==0){
+						sCount = 0;
+						oCount = 0;
+						dCount = 0;
+						gCount = 0;
+						uCount = 0;
+						Table.open(batchpath+sdAna+imName+".XYZ."+availXYZ[j]+".csv");
+						for (k = 0; k < Table.size; k++) {
+							id = Table.getString("ID",i);
+							included = Table.getString("XYZinROI?", k);
+							if (included == "Yes"){
+								status = Table.getString("SynapseStatus",k);
+								if(status=="Synapse"){              
+									sCount++;
+								}else if (status=="Orphan"){			
+									oCount++;
+								}else if (status=="Doublet"){	   
+									dCount++;
+								}else if (status=="Garbage"){	   
+									gCount++;
+								}else{								
+									uCount++;
+								}
+							}
+						}
+						//close("*.csv");
+						// 1.2.4.1 Open Batch Master and update information about XYZs
+						Table.open(batchpath+sdAna+fBM);
+						Table.set(availXYZ[j]+"_nSynapses", imIndex, sCount);
+						Table.set(availXYZ[j]+"_nDoublets", imIndex, dCount);
+						Table.set(availXYZ[j]+"_nOrphans", imIndex, oCount);
+						Table.set(availXYZ[j]+"_nGarbage", imIndex, gCount);
+						Table.set(availXYZ[j]+"_nUnclear", imIndex, uCount);
+						Table.update;
+						Table.save(batchpath+sdAna+fBM);
+						close("*.csv");
+						close("*");
+					}else if(i==1){
+						Table.open(batchpath+sdAna+imName+".XYZ."+availXYZ[j]+".csv");
+						posCount = 0;
+						negCount = 0;
+						uncCount = 0;
+						for (k = 0; k < Table.size; k++) {
+							id = Table.getString("ID",k);
+							included = Table.getString("XYZinROI?", k);
+							if (included == "Yes"){
+								status = Table.getString("TerminalStatus",k);
+								if(status=="Positive"){              
+									posCount++;
+								}else if (status=="Negative"){			
+									negCount++;
+								}else{								
+									uncCount++;
+								}
+							}
+						}
+						//close("*.csv");
+						// 1.2.4.1 Open Batch Master and update information about XYZs
+						Table.open(batchpath+sdAna+fBM);
+						Table.set(availXYZ[j]+"_nSynapses", imIndex, posCount);
+						Table.set(availXYZ[j]+"_nDoublets", imIndex, negCount);
+						Table.set(availXYZ[j]+"_nOrphans", imIndex, uncCount);
+						Table.update;
+						Table.save(batchpath+sdAna+fBM);
+						close("*.csv");
+						close("*");
 					}
 				}
 			}
+		}
+	}
+	}
+}
+
+
+// PERFORM PILLAR-MODIOLAR MAPPING -- FX FOR ASSIGNING PILLAR-MODIOLAR STATUS BASED ON USER DEFINED AXIS
+function mapPillarModiolar(batchpath, imName, imIndex){
+	// 1. Check with user to proceed with thumbnail generation
+	Dialog.create("Checkin");
+	Dialog.addString("Proceed with pillar-modiolar mapping for all available XYZ data sets?","Yes");
+	Dialog.addMessage("If yes, indicate channels to include for mapping:");
+	Dialog.addString("Channels to use for pillar-modiolar:",defPMCh);
+	Dialog.show();
+	proceed=Dialog.getString();
+	if(proceed=="Yes"){
+		// 1.1 Get and set information about channels to include
+		chStr = Dialog.getString();
+		chArr = split(chStr, "'[',',',']',' ',");
+		chCount = lengthOf(chArr);
+		Table.open(batchpath+sdAna+fBM);
+		Table.set("Pillar-Modiolar Marker Channels", imIndex, chStr);
+		Table.update;
+		Table.save(batchpath+sdAna+fBM);
+		// 1.2 Have the user draw an ROI for the area to work on 
+		open(batchpath+sdRM+imName+".MPI.tif");
+		setTool("rectangle");
+		waitForUser("Draw a rectangle around the region to include in pillar-modiolar mapping.\n"+
+					"Then press [t] to add to the ROI Manager.\n"+
+					"Make sure the rectangle is still visible when pressing 'Ok' to proceed.");
+		Roi.getCoordinates(xpoints, ypoints);
+		xSt = xpoints[0];
+		xEnd = xpoints[1];
+		close();
+		// 1.3 Get available XYZ data information
+		xyzStatus = Table.getString("AvailXYZData", imIndex);
+		close("*.csv");
+		if(xyzStatus == "Both Pre- and Post-"){
+			availXYZ = newArray("PreSyn", "PostSyn");
+		}else if(xyzStatus == "Only Pre-"){
+			availXYZ = newArray("PreSyn");
+		}else if(xyzStatus == "Only Post-"){
+			availXYZ = newArray("PostSyn");
+		}
+		xyzFCount = lengthOf(availXYZ);
+		// 1.4 Iterate through the possible XYZ data sets
+		for (i = 0; i < xyzFCount; i++) {
+			open(batchpath+sdTIF+imName+".UserAdj.tif");
+			rename(imName+imFType);
+			Stack.getDimensions(width, height, channels, slices, frames);
+			run("Split Channels");
+			for (j = 0; j < channels; j++) {
+				ch = j+1;
+				selectImage("C"+toString(ch)+"-"+imName+imFType);
+				keepOpen = "False";
+				for (k = 0; k < chCount; k++) {
+					if(chArr[k]==ch){
+						keepOpen = "True";
+					}
+				}
+				if(keepOpen=="False"){
+					close();
+				}
+			}
+			// 1.4.1 Create a composite image of the channels based on defaults
+			compChArr = newArray(chCount+1);
+			compChStr = "";
+			for (j = 0; j < chCount; j++) {
+				// . Create an array of image file names for calling windows
+				compChArr[j] = "C"+chArr[j]+"-"+imName+imFType;
+				// . Create string for Merge Channels argument 
+				compChStr = compChStr+defPMLUT[j]+"="+compChArr[j]+" ";
+				// . When all single channel names have been setup, add final name for comp image
+				if(j==(chCount-1)){
+					compChArr[j+1]=imName+imFType;
+				}
+			}
+			run("Merge Channels...", compChStr+" create ignore");
+			rename(imName+imFType);
+			// 1.4.2 Create the YZ projection
+			makeRectangle(xSt, 0, xEnd-xSt, height);
+			run("Crop");
+			run("Reslice [/]...", "output="+vxD+" start=Left flip");
+			run("Z Project...", "projection=[Sum Slices]");
+			getPixelSize(unit, pixW, pixH);
+			run("Flatten");
+			close("\\Others");
+			// . Save a version of the image with no annotations
+			getDimensions(width, height, channels, slices, frames);
+			// . Calculate the scaling factor and output dimensions
+			scaleF = round(annImW/width);
+			outputW = scaleF*width;
+			outputH = scaleF*height;
+			// .  Scale the annotated image
+			run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+
+				" interpolation=Bilinear average create");
+			// . Save the annotated image
+			save(batchpath+sdPM+imName+".PMMap."+availXYZ[i]+".png");
+			close();
+			// 1.4.3 Have the user draw the p-m axis
+			setTool("line");
+			waitForUser("Draw the pillar-modilar axis across the\nbasolateral region of the hair cell.\n"+
+						"Make sure that the line is still visible before closing this window.");
+			getLine(x1, y1, x2, y2, lineWidth);
+			getDimensions(width, height, channels, slices, frames);
+			// . Find the midpoint of the line
+			xMid = (x1+x2)/2;
+			yMid = (y1+y2)/2;
+			// . Find the equation of the line
+			slope = (y2-y1)/(x2-x1);
+			int = y1-(slope*x1);
+			// . Find the equation of the perpendicular line
+			pSlope = -1/slope;
+			pInt = yMid-(pSlope*xMid);
+			// . Get the start and end points for the perpendicular line
+			xSt = 0;
+			xEnd = width;
+			ySt = pInt;
+			yEnd = (pSlope*xEnd)+pInt;
+			// 1.4.4 Add annotations to the image
+			makePoint(xMid, yMid, "small yellow hybrid add");
+			setLineWidth(3);
+			setColor("yellow");
+			drawLine(x1, y1, x2, y2);
+			setColor("white");
+			drawLine(xSt, ySt, xEnd, yEnd);
+			// 1.4.5 Iterate through the XYZs and assign P-M status based on position above or below the 
+			// . the apical-basal axis. 
+			Table.open(batchpath+sdAna+imName+".XYZ."+availXYZ[i]+".csv");
+			nXYZs = Table.size;
+			pCount = 0;
+			mCount = 0;
+			for (j = 0; j < nXYZs; j++) {
+				// . Check if the XYZ should be included
+				valid = Table.getString("XYZinROI?", j);
+				if (valid == "Yes") {
+					id = Table.get("ID", j);
+					// New coordinate system means original x-coords are now y
+					// . will need to add info in Readme about this
+					xPos = Table.get("Position Y (voxels)", j);
+					// The y-coord is weird because it was z-coord prior to the transformation
+					//  and the reslicing generates pixels in the new y-direction using interpolation.
+					// . So now thew new y-coordinate has to be scaled and subracted from the total image height. 
+					yPos = height-(Table.get("Position Z", j))/pixH;
+					// Now we determine if it's above or below the AB-axis
+					if(yPos > ((pSlope*xPos)+pInt)){
+						// Add an annotation to the MPI for verification purposes
+						makePoint(xPos, yPos, "medium yellow dot add");
+						setFont("SansSerif",8, "antiliased");
+					    setColor(255, 255, 255);
+						drawString(id, xPos, yPos);
+						Table.set("PMStatus", j, "Pillar");
+						Table.update;
+						pCount++;
+					}else{
+						// Add an annotation to the MPI for verification purposes
+						makePoint(xPos, yPos, "medium white dot add");
+						setFont("SansSerif",8, "antiliased");
+					    setColor(255, 255, 255);
+						drawString(id, xPos, yPos);
+						Table.set("PMStatus", j, "Modiolar");
+						Table.update;
+						mCount++;
+					}
+				}
+			}
+			// 1.4.6 Rescale the image and save with annotations
+			getDimensions(width, height, channels, slices, frames);
+			// . Calculate the scaling factor and output dimensions
+			scaleF = round(annImW/width);
+			outputW = scaleF*width;
+			outputH = scaleF*height;
+			// .  Scale the annotated image
+			run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+
+				" interpolation=Bilinear average create");
+			// . Save the annotated image
+			save(batchpath+sdPM+imName+".AnnPMMap."+availXYZ[i]+".png");
+			close("*");	
+			close("*.csv");
+			// Add counts to Batch Master
+			Table.open(batchpath+sdAna+fBM);
+			Table.set(availXYZ[i]+"_nPillar", imIndex, pCount);
+			Table.set(availXYZ[i]+"_nModiolar", imIndex, mCount);
+			Table.update;
+			Table.save(batchpath+sdAna+fBM);
+			close("*.csv");
 		}
 	}
 }
