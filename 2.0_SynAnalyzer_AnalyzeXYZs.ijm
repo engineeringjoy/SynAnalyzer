@@ -62,9 +62,9 @@ rbRadius = 50;
 // Image file type
 imFType = ".czi";
 // Image analysis info - Columns for Batch Master
-bmCols = newArray("ImageName","ImInitialized?", "Analyzed?", "PreSynAnaComplete?","PostSynAnaComplete?",
-				  "PreSynTermAnaComplete?","PostSynTermAnaComplete?", "PreSynPMAnaComplete?","PostSynPMAnaComplete?",
-				  "AvailXYZData", "ZStart", "ZEnd", "Voxel Width (um)", "Voxel Depth (um)", 
+bmCols = newArray("ImageName","ImInitialized?", "AnalysisStatus", "genThumbnailsStatus", "genArraysStatus",
+				  "reviewArraysStatus", "mapPillarModiolarStatus","AvailXYZData", "ZStart", "ZEnd", 
+				  "Voxel Width (um)", "Voxel Depth (um)", 
 				  "Synaptic Marker Channels", "Terminal Marker Channels", "Pillar-Modiolar Marker Channels",
 				  "PreSynXYZ", "PostSynXYZ", "PreSyn_nSynapses", "PostSyn_nSynapses", 
 				  "PreSyn_nDoublets", "PostSyn_nDoublets",  "PreSyn_nOrphans", "PostSyn_nOrphans",
@@ -168,11 +168,11 @@ function initSynAnalyzer() {
 		    	// Iterate through the columns in the preset array and setup table 
 		    	for (j = 0; j < cols; j++) {
 		    		// First column should be image name
-		    		if (j==0){
+		    		if(j==0){
 		    			Table.set(bmCols[j], i, fileList[i]);
-		    		}else if (j>0 && j<9){
+		    		}else if(j==1){
 		    			Table.set(bmCols[j], i, "No");
-		    		}else if (j>8){
+		    		}else{
 						Table.set(bmCols[j], i, "TBD");
 		    		}
 		    	}
@@ -274,7 +274,6 @@ function runAnalysis(mode, batchpath){
 			// 3.2.4. Walk user through the process of reviewing arrays and assigning synapse/terminal status
 			reviewArrays(batchpath, imName, imIndex);
 			// 3.2.5. Perform pillar-modiolar mapping
-			print("test");'
 			mapPillarModiolar(batchpath, imName, imIndex);
 			// Increase counter to move on to next file in fileList
 			i++;
@@ -335,12 +334,12 @@ function verifyFile(batchpath, fileName, imList){
 
 // INITIALIZE IMAGE -- FX FOR SETTING UP IMAGE FOR ANALYSIS 
 function initializeIm(batchpath, imName, imIndex){
-	// 2. Check if the image has already been initialized
+	// 1. Check if the image has already been initialized
 	Table.open(batchpath+sdAna+fBM);
 	imStatus = Table.getString("ImInitialized?", imIndex);
 	xyzStatus = Table.getString("AvailXYZData", imIndex);
 	close("*.csv");
-	// 3. Determine how to proceed if already initialized
+	// 2. Determine how to proceed if already initialized
 	if(imStatus=="Yes"){
 		// . Check in with user 
 		Dialog.create("Check to proceed");
@@ -353,7 +352,7 @@ function initializeIm(batchpath, imName, imIndex){
 			xyzStatus = "TBD";
 		}
 	}
-	// 4. Check for available XYZ datasets
+	// 3. Check for available XYZ datasets
 	if(xyzStatus=="TBD"){
 		pESxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PreSyn.csv";
 		pTSxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PostSyn.csv";
@@ -381,7 +380,7 @@ function initializeIm(batchpath, imName, imIndex){
 		Table.set("AvailXYZData", imIndex, adXYZ);
 		Table.update;
 		Table.save(batchpath+sdAna+fBM);
-		// 4.1 Initialize image 
+		// 3.1 Initialize image 
 		if (adXYZ=="None"){
 			// . The Batch Master list needs to be updated. Easiest is to have the user restart. 
 			print(imName+" exists but does not have XYZ data associated with the image.");
@@ -485,7 +484,7 @@ function initializeIm(batchpath, imName, imIndex){
 			}
 		}
 	}
-	// 5. Update Batch Master to indicate initialization as complete
+	// 4. Update Batch Master to indicate initialization as complete
 	Table.open(batchpath+sdAna+fBM);
 	Table.set("ImInitialized?", imIndex, "Yes");
 	Table.update;
@@ -496,12 +495,23 @@ function initializeIm(batchpath, imName, imIndex){
 
 // GEN THUMBNAILS -- FX FOR GENERATING THUMBNAILS 
 function genThumbnails(batchpath, imName, imIndex){
-	// 1. Check with user to proceed with thumbnail generation
-	Dialog.create("Checkin");
+	// 1. Get the status for this function
+	Table.open(batchpath+sdAna+fBM);
+	fxStatusTemp = Table.getString("genThumbnailsStatus", imIndex);
+	fxStatArr = split(fxStatusTemp);
+	// 2. Check with user to proceed with thumbnail generation
+	Dialog.create("Generating Thumbnails");
+	Dialog.addMessage("Function status: ");
+	for (i = 0; i < lengthOf(fxStatArr); i++) {
+		Dialog.addMessage(fxStatArr[i]);
+	}
 	Dialog.addRadioButtonGroup("Proceed with thumbnail generation?", newArray("Yes", "No"), 2, 1, "Yes");
 	Dialog.show();
 	if(Dialog.getRadioButton()=="Yes"){
-		// 1.1 Have the user draw an ROI for the area to work on 
+		if(fxStatusTemp=="TBD"){
+			fxStatusTemp="Initialized";
+		}
+		// 2.1 Have the user draw an ROI for the area to work on 
 		//  . Open the substack MPI 
 		open(batchpath+sdRM+imName+".MPI.tif");
 		setTool("rectangle");
@@ -515,7 +525,7 @@ function genThumbnails(batchpath, imName, imIndex){
 		bbYZ = ypoints[0];
 		bbYT = ypoints[2];
 		close();
-		// 1.2 Get available XYZ data information
+		// 2.2 Get available XYZ data information
 		Table.open(batchpath+sdAna+fBM);
 		xyzStatus = Table.getString("AvailXYZData", imIndex);
 		slStart = Table.get("ZStart", imIndex);
@@ -529,11 +539,15 @@ function genThumbnails(batchpath, imName, imIndex){
 			availXYZ = newArray("PostSyn");
 		}
 		xyzFCount = lengthOf(availXYZ);
-		// 1.3 Iterate through possibile thumbnail generation steps for synapse thumbnails
+		// 2.3 Iterate through possibile thumbnail generation steps for synapse thumbnails
 		//  . Run through main for-loop once for synapses and once for terminals
 		tnSteps = newArray("Synaptic","Terminal");
 		tnCount = lengthOf(tnSteps);
 		defChs = newArray(defSynCh,defTerCh);
+		//  . Update fxStatus
+		fxStatus = newArray((xyzFCount*tnCount)+1);
+		fxStatus[0]=fxStatusTemp; 
+		f = 0;
 		for (i = 0; i < tnCount; i++) {
 			for (j = 0; j < xyzFCount; j++) {
 				Dialog.create("Checkin");
@@ -543,11 +557,11 @@ function genThumbnails(batchpath, imName, imIndex){
 				Dialog.show();
 				include = Dialog.getString();
 				if (include == "Yes"){
-					// 1.3.01 Setup subfolder for storing thumbnails associated with this image/XYZ set
+					// 2.3.1 Setup subfolder for storing thumbnails associated with this image/XYZ set
 					if (!File.isDirectory(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/")) {
 						File.makeDirectory(batchpath+sdTN+imName+"."+tnSteps[i]+"."+availXYZ[j]+"/");
 					}
-					// 1.3.1 Get the information from the dialog box & add to Batch Master
+					// 2.3.2 Get the information from the dialog box & add to Batch Master
 					chStr = Dialog.getString();
 					chArr = split(chStr, "'[',',',']',' ',");
 					chCount = lengthOf(chArr);
@@ -556,7 +570,7 @@ function genThumbnails(batchpath, imName, imIndex){
 					Table.update;
 					Table.save(batchpath+sdAna+fBM);
 					close("*.csv");
-					// 1.3.2 Open the image & get rid of channels that are not synaptic markers
+					// 2.3.3 Open the image & get rid of channels that are not synaptic markers
 					open(batchpath+sdTIF+imName+".UserAdj.tif");
 					rename(imName+imFType);
 					Stack.getDimensions(width, height, channels, slices, frames);
@@ -574,7 +588,7 @@ function genThumbnails(batchpath, imName, imIndex){
 							close();
 						}
 					}
-					// .  Create a composite image of the channels based on defaults
+					// 2.3.4 Create a composite image of the channels based on defaults
 					compChArr = newArray(chCount+1);
 					compChStr = "";
 					for (k = 0; k < chCount; k++) {
@@ -592,7 +606,7 @@ function genThumbnails(batchpath, imName, imIndex){
 					}
 					run("Merge Channels...", compChStr+" create keep ignore");
 					rename(imName+imFType);
-					// 1.3.3 Generate the thumbnails for each of the available images
+					// 2.3.5 Generate the thumbnails for each of the available images
 					Table.open(batchpath+sdAna+imName+".XYZ."+availXYZ[j]+".csv");
 					nXYZs = Table.size;
 					for (k = 0; k < tnExtCount; k++) {
@@ -672,34 +686,54 @@ function genThumbnails(batchpath, imName, imIndex){
 							}
 						}
 					}
-					// . Close unnecessary images
+					// 2.3.6 Close unnecessary images
 					for (k = 0; k < tnExtCount; k++) {
 						close(compChArr[k]);
 					}
-					// . Save the updated XYZ data
+					// 2.3.7 Save the updated XYZ data
 					Table.update;
 					Table.save(batchpath+sdAna+imName+".XYZ."+availXYZ[j]+".csv");
 					close("*.csv");
-					// . Update Batch Master with number of XYZs 
+					// 2.3.8 Update Batch Master with number of XYZs 
 					Table.open(batchpath+sdAna+fBM);
 					Table.set(availXYZ[j]+"XYZ", imIndex, nXYZs);
 					Table.update;
 					Table.save(batchpath+sdAna+fBM);
 					close("*.csv");
+					// 2.3.9 Update status
+					fxStatus[f+1] = "Comp_"+availXYZ[j]+tnSteps[i];
+					f++;
 				}
 			}
 		}
+		Table.open(batchpath+sdAna+fBM);
+		fxStr = String.join(fxStatus);
+		Table.set("genThumbnailsStatus",imIndex,fxStr);
+		Table.update;
+		Table.save(batchpath+sdAna+fBM);
+		close("*.csv");
 	}
 }
 
 // GEN ARRAYS -- FX FOR GENERATING ARRAYS FOR AVAILABLE THUMBNAILS
 function genArray(batchpath, imName, imIndex){
-	// 1. Check with user to proceed with thumbnail generation
-	Dialog.create("Checkin");
+	// 1. Get the status for this function
+	Table.open(batchpath+sdAna+fBM);
+	fxStatusTemp = Table.getString("genArraysStatus", imIndex);
+	fxStatArr = split(fxStatusTemp);
+	// 2. Check with user to proceed with thumbnail generation
+	Dialog.create("Generating Arrays");
+	Dialog.addMessage("Function status: ");
+	for (i = 0; i < lengthOf(fxStatArr); i++) {
+		Dialog.addMessage(fxStatArr[i]);
+	}
 	Dialog.addRadioButtonGroup("Proceed with array generation?", newArray("Yes", "No"), 2, 1, "Yes");
 	Dialog.show();
 	proceed = Dialog.getRadioButton();
 	if(proceed=="Yes"){
+		if(fxStatusTemp=="TBD"){
+			fxStatusTemp="Initialized";
+		}
 		// 1.1 Get available XYZ data information
 		Table.open(batchpath+sdAna+fBM);
 		xyzStatus = Table.getString("AvailXYZData", imIndex);
@@ -715,6 +749,10 @@ function genArray(batchpath, imName, imIndex){
 		// 1.2 Iterate through possibile array generation steps for thumbnails
 		tnSteps = newArray("Synaptic","Terminal");
 		tnCount = lengthOf(tnSteps);
+		//  . Update fxStatus
+		fxStatus = newArray((xyzFCount*tnCount)+1);
+		fxStatus[0]=fxStatusTemp; 
+		f = 0;
 		for (i = 0; i < tnCount; i++) {
 			for (j = 0; j < xyzFCount; j++) {
 				Dialog.create("Checkin");
@@ -748,20 +786,40 @@ function genArray(batchpath, imName, imIndex){
 							close("*");
 						}
 						close("*.csv");
+						// 2.3.9 Update status
+						fxStatus[f+1] = "Comp_"+availXYZ[j]+tnSteps[i];
+						f++;
 					}
 				}
 			}
 		}
+		Table.open(batchpath+sdAna+fBM);
+		fxStr = String.join(fxStatus);
+		Table.set("genArraysStatus",imIndex,fxStr);
+		Table.update;
+		Table.save(batchpath+sdAna+fBM);
+		close("*.csv");
 	}
 }
 
 // REVIEW ARRAYS -- FX FOR REVIEWING ARRAYS AND DENOTING STATUS
 function reviewArrays(batchpath, imName, imIndex){
-	// 1. Check with user to proceed with thumbnail generation
-	Dialog.create("Checkin");
+	// 1. Get the status for this function
+	Table.open(batchpath+sdAna+fBM);
+	fxStatusTemp = Table.getString("reviewArraysStatus", imIndex);
+	fxStatArr = split(fxStatusTemp);
+	// 2. Check with user to proceed with thumbnail generation
+	Dialog.create("Generating Arrays");
+	Dialog.addMessage("Function status: ");
+	for (i = 0; i < lengthOf(fxStatArr); i++) {
+		Dialog.addMessage(fxStatArr[i]);
+	}
 	Dialog.addRadioButtonGroup("Proceed with array review?", newArray("Yes", "No"), 2, 1, "Yes");
 	Dialog.show();
 	if(Dialog.getRadioButton()=="Yes"){
+		if(fxStatusTemp=="TBD"){
+			fxStatusTemp="Initialized";
+		}
 		// 1.1 Get available XYZ data information
 		Table.open(batchpath+sdAna+fBM);
 		xyzStatus = Table.getString("AvailXYZData", imIndex);
@@ -780,6 +838,10 @@ function reviewArrays(batchpath, imName, imIndex){
 		tnCount = lengthOf(tnSteps);
 		txtArr = newArray("Enter 'Synapse', 'Orphan','Doublet', 'Garbage', or a custom flag as needed.",
 						  "Enter 'Positive', 'Negative', or a custom flag as needed.");
+		//  . Update fxStatus
+		fxStatus = newArray((xyzFCount*tnCount)+1);
+		fxStatus[0]=fxStatusTemp; 
+		f = 0;
 		for (i = 0; i < tnCount; i++) {
 			// 1.2.1 Iterate through the possible XYZ data sets
 			for (j = 0; j < xyzFCount; j++) {
@@ -860,7 +922,6 @@ function reviewArrays(batchpath, imName, imIndex){
 								}
 							}
 						}
-						//close("*.csv");
 						// 1.2.4.1 Open Batch Master and update information about XYZs
 						Table.open(batchpath+sdAna+fBM);
 						Table.set(availXYZ[j]+"_nSynapses", imIndex, posCount);
@@ -871,24 +932,44 @@ function reviewArrays(batchpath, imName, imIndex){
 						close("*.csv");
 						close("*");
 					}
+					// 2.3.9 Update status
+					fxStatus[f+1] = "Comp_"+availXYZ[j]+tnSteps[i];
+					f++;
 				}
 			}
 		}
 	}
+	Table.open(batchpath+sdAna+fBM);
+	fxStr = String.join(fxStatus);
+	Table.set("reviewArraysStatus",imIndex,fxStr);
+	Table.update;
+	Table.save(batchpath+sdAna+fBM);
+	close("*.csv");
 	}
 }
 
 
 // PERFORM PILLAR-MODIOLAR MAPPING -- FX FOR ASSIGNING PILLAR-MODIOLAR STATUS BASED ON USER DEFINED AXIS
 function mapPillarModiolar(batchpath, imName, imIndex){
-	// 1. Check with user to proceed with thumbnail generation
-	Dialog.create("Checkin");
+	// 1. Get the status for this function
+	Table.open(batchpath+sdAna+fBM);
+	fxStatusTemp = Table.getString("mapPillarModiolarStatus", imIndex);
+	fxStatArr = split(fxStatusTemp);
+	// 2. Check with user to proceed with thumbnail generation
+	Dialog.create("Mapping Pillar-Modiolar");
+	Dialog.addMessage("Function status: ");
+	for (i = 0; i < lengthOf(fxStatArr); i++) {
+		Dialog.addMessage(fxStatArr[i]);
+	}
 	Dialog.addString("Proceed with pillar-modiolar mapping for all available XYZ data sets?","Yes");
 	Dialog.addMessage("If yes, indicate channels to include for mapping:");
 	Dialog.addString("Channels to use for pillar-modiolar:",defPMCh);
 	Dialog.show();
 	proceed=Dialog.getString();
 	if(proceed=="Yes"){
+		if(fxStatusTemp=="TBD"){
+			fxStatusTemp="Initialized";
+		}
 		// 1.1 Get and set information about channels to include
 		chStr = Dialog.getString();
 		chArr = split(chStr, "'[',',',']',' ',");
@@ -918,6 +999,10 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 			availXYZ = newArray("PostSyn");
 		}
 		xyzFCount = lengthOf(availXYZ);
+		//  . Update fxStatus
+		fxStatus = newArray(xyzFCount+1);
+		fxStatus[0]=fxStatusTemp; 
+		f = 0;
 		// 1.4 Iterate through the possible XYZ data sets
 		for (i = 0; i < xyzFCount; i++) {
 			open(batchpath+sdTIF+imName+".UserAdj.tif");
@@ -1059,6 +1144,15 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 			Table.update;
 			Table.save(batchpath+sdAna+fBM);
 			close("*.csv");
+			// 2.3.9 Update status
+			fxStatus[f+1] = "Comp_"+availXYZ[i];
+			f++;
 		}
+	Table.open(batchpath+sdAna+fBM);
+	fxStr = String.join(fxStatus);
+	Table.set("mapPillarModiolarStatus",imIndex,fxStr);
+	Table.update;
+	Table.save(batchpath+sdAna+fBM);
+	close("*.csv");
 	}
 }
