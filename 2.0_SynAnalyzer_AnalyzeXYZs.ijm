@@ -275,6 +275,19 @@ function runAnalysis(mode, batchpath){
 			reviewArrays(batchpath, imName, imIndex);
 			// 3.2.5. Perform pillar-modiolar mapping
 			mapPillarModiolar(batchpath, imName, imIndex);
+			// 3.2.6 Ask user about updating status
+			Table.open(batchpath+sdAna+fBM);
+			imStatus = Table.getString("AnalysisStatus", imIndex);
+			Dialog.create("Update Analysis Status?");
+			Dialog.addMessage("All available analysis steps have been performed.");
+			Dialog.addMessage("To update status, change the text in the box below.");
+			Dialog.addString("Analysis Status: ", imStatus);
+			Dialog.show();
+			newStatus=Dialog.getString();
+			Table.set("AnalysisStatus", imIndex, newStatus);
+			Table.update;
+			Table.save(batchpath+sdAna+fBM);
+			close("*.csv");
 			// Increase counter to move on to next file in fileList
 			i++;
 		}else if(fStatus == "Unregistered"){
@@ -625,6 +638,8 @@ function genThumbnails(batchpath, imName, imIndex){
 									if ((slZ >= slStart) && (slZ <= slEnd)){
 										// Update information to include the XYZ
 										Table.set("XYZinROI?", l, "Yes");
+										Table.set("SynapseStatus", l, "Synapse?");
+										Table.set("TerminalStatus", l, "Positive?");
 										// Caclulate and store the XYZ coordinates for the upper left corner of the cropping box
 										cropX = xPos - ((tnW/vxW)/2);
 										cropY = yPos - ((tnH/vxW)/2); 
