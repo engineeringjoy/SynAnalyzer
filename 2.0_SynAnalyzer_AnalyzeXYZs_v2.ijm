@@ -1,8 +1,10 @@
 /*
- * 2.0_SynAnalyzer_AnalyzeXYZs.ijm
+ * 2.0_SynAnalyzer_AnalyzeXYZs_v2.ijm
  * Created by JFranco | 16 AUG 2024
- * Last update: 16 JUL 2024
+ * Last update: 4 OCT 2024
  * https://github.com/engineeringjoy/SynAnalyzer
+ * 
+ * Version notes: This version of ...AnalyzeXYZs... was developed to deal with larger images that should be downsampled for analysis.  
  * 
  * This is the second module in the SynAnalyzer image analyze pipeline. The macro analyzes XYZ coordinates
  * associated with an image file and walks the user through the various steps in the analysis process. 
@@ -52,13 +54,11 @@ fBM = "SynAnalyzerBatchMaster.csv";
 // Thumbnail bounding box dimesions in um
 tnW = 2;
 tnH = 2;
-tnZ = 1.5;
+tnZ = 2.5;
 vxW = 0.0248;
 vxD = 0.31;
-zSl = 4;
 // Annotated Image Size - Currently based on the output width of the SynArray
 annImW = 1650;
-scaleF = 0.5;
 // Rolling ball radius for background subtraction (in pixels)
 rbRadius = 50;
 // Image file type
@@ -83,11 +83,6 @@ defTerCh="[2,1]";
 // Default LUT assignments for thumbnails: c2 = green, c5 = cyan, c6 = magenta, c7 = yellow
 defSynLUT = newArray("c2","c6");
 defTerLUT = newArray("c5","c6");
-// LUT to use for max projection -- we keep the LUTs the same for types of markers 
-// .   Hair cell => blue => c3; Presyn => green => c2; Postsyn => magenta => c6; Terminal => yellow = c7
-// .   Ntng1 CHs: HC => C4; CtBP2 => C3; Homer1 => C1; tdTOM => C2;
-defMPILUT = newArray("c3","c2","c6","c7");
-defMPICH = newArray("C4","C3","C1","C2");
 // Default extensions to add to thumbnails when saving
 defTNExt = newArray("C1", "C2", "Comp");
 tnExtCount = lengthOf(defTNExt);
@@ -97,7 +92,7 @@ defTerColors = newArray("Cyan", "Magenta");
 // Default channels for pillar-modiolar mapping
 defPMCh = "[2,4]";
 // Default LUT for pillar-modiolar mapping
-defPMLUT = newArray("c3","c7");
+defPMLUT = newArray("c6","c5");
 
 // *** HOUSEKEEPING ***
 run("Close All");
@@ -308,6 +303,7 @@ function runAnalysis(mode, batchpath){
 				print("Skipping "+fileName+". Invalid file type.");
 				i++;
 			}else{
+				print(fStatus);
 				batch = "Exit";
 			}
 		}
@@ -369,162 +365,154 @@ function initializeIm(batchpath, imName, imIndex){
 		check = Dialog.getString();
 		if (check == "Yes"){
 			// Update information about the analysis for this image
-			imStatus = "No";
+			imStatus = "TBD";
 			xyzStatus = "TBD";
 		}
 	}
-
-	// 3.0 Check if the image has been initialized
-	if(imStatus == "No"){
-		// 3. Check for available XYZ datasets
-		if(xyzStatus=="TBD"){
-			print(xyzStatus);
-			pESxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PreSyn.csv";
-			pTSxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PostSyn.csv";
-			// . Check for pre-synaptic XYZ data
-			if (File.exists(pESxyz)) {
-				// . Check if it also has postsynaptic XYZ data
-				if (File.exists(pTSxyz)) {
-					adXYZ ="Both Pre- and Post-";
-					xyzFCount = 2;
-					xyzFiles = newArray("PreSyn", "PostSyn");
-				}else{
-					adXYZ ="Only Pre-";
-					xyzFCount = 1;
-					xyzFiles = newArray("PreSyn");
-				}
-			}else if(File.exists(pTSxyz)){ 
-				adXYZ ="Only Post-";
+	// 3. Check for available XYZ datasets
+	if(xyzStatus=="TBD"){
+		pESxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PreSyn.csv";
+		pTSxyz = batchpath+"/XYZCSVs/"+imName+".XYZ.PostSyn.csv";
+		// . Check for pre-synaptic XYZ data
+		if (File.exists(pESxyz)) {
+			// . Check if it also has postsynaptic XYZ data
+			if (File.exists(pTSxyz)) {
+				adXYZ ="Both Pre- and Post-";
+				xyzFCount = 2;
+				xyzFiles = newArray("PreSyn", "PostSyn");
+			}else{
+				adXYZ ="Only Pre-";
 				xyzFCount = 1;
-				xyzFiles = newArray("PostSyn");
-			}else{
-				adXYZ ="None";
+				xyzFiles = newArray("PreSyn");
 			}
-			
-			// 3.1 Initialize image 
-			if (adXYZ=="None"){
-				// . The Batch Master list needs to be updated. Easiest is to have the user restart. 
-				print(imName+" exists but does not have XYZ data associated with the image.");
-				imStatus = "Skip";
-			}else{
-				// . GET INFORMATION ABOUT THE IMAGE & WHAT TO ANALYZE
-				// . Open the image and get basic information
-				waitForUser("!Wait to click ok! When Bio-Formats opens, ensure that default settings are used,\n"+
-							"and that no boxes are checked. Do not split channels and do not autoscale.");
-				open(batchpath+sdRI+imName+imFType);
-				getVoxelSize(vxW, vxH, vxD, unit);
-				Stack.getDimensions(width, height, channels, slices, frames);
-				run("Split Channels");
-				waitForUser("!WAIT TO CLICK OK! Perform stack-wide background subtraction & brightness contrast adjustments.\n"+
-							"The adjustments set here will be used for all subsequent analysis steps.");
-				run("Merge Channels...", defMPILUT[0]+"="+defMPICH[0]+"-"+imName+imFType+
-										 " "+defMPILUT[1]+"="+defMPICH[1]+"-"+imName+imFType+
-										 " "+defMPILUT[2]+"="+defMPICH[2]+"-"+imName+imFType+
-										 " "+defMPILUT[3]+"="+defMPICH[3]+"-"+imName+imFType+" create ignore");
-				print(defMPILUT[0]+"="+defMPICH[0]+"-"+imName+imFType+
-										 " "+defMPILUT[1]+"="+defMPICH[1]+"-"+imName+imFType+
-										 " "+defMPILUT[2]+"="+defMPICH[2]+"-"+imName+imFType+
-										 " "+defMPILUT[3]+"="+defMPICH[3]+"-"+imName+imFType);
-				// . Ask the user for z-slices to include
-				Dialog.create("Get Analysis Info");
-				Dialog.addMessage("Indicate the slices to include in the analysis region.");
-				Dialog.addString("Slice Start","1");
-				Dialog.addString("Slice End", slices);
-				Dialog.show();
-				slStart = Dialog.getString();
-				slEnd = Dialog.getString();
-				// . Add image information to the table
-				Table.open(batchpath+sdAna+fBM);
-				Table.set("ZStart", imIndex, slStart);
-				Table.set("ZEnd", imIndex, slEnd);
-				Table.set("Voxel Width (um)", imIndex, vxW);
-				Table.set("Voxel Depth (um)", imIndex, vxD);
-				Table.update;
-				Table.save(batchpath+sdAna+fBM);
-				close("*.csv");
-				// 4.2 CREATE A MAXIMUM PROJECTION OF THE IMAGE FOR ANNOTATION
-				run("Make Substack...", "slices="+slStart+"-"+slEnd);
-				save(batchpath+sdTIF+imName+".UserAdj.tif");
-				run("Z Project...", "projection=[Max Intensity]");
-				run("Make Composite");
-				run("Flatten");
-				save(batchpath+sdRM+imName+".MPI.tif");
-				close("*");
-				// 4.3 VERIFY THAT XYZ DATA MATCHES IMAGE
-				writeFile = "Yes";
-				for (i = 0; i < lengthOf(xyzFiles); i++) {
-					// *** IMPORTANT CHECK: IF SAR.XYZ FILE ALREADY EXISTS
-					if(File.exists(batchpath+sdAna+imName+".XYZ."+xyzFiles[i]+".csv")){
-						Dialog.create("Check to proceed");
-						Dialog.addString("SAR.XYZ for "+xyzFiles[i]+" has already been created.\n"+
-										 "Overwrite existing file? (Enter 'Yes' or 'No')", "No");
-						Dialog.show();
-						writeFile = Dialog.getString();
-					}
-					if(writeFile=="Yes"){
-						// Open the substack MPI -- to be annotated
-						open(batchpath+sdRM+imName+".MPI.tif");
-						// Load the raw XYZ points
-						Table.open(batchpath+sdXYZs+imName+".XYZ."+xyzFiles[i]+".csv");
-						// Save a clean version of the XYZ file to add analysis info
-						Table.save(batchpath+sdAna+imName+".XYZ."+xyzFiles[i]+".csv");
-						// Iterate through the rows of the XYZ table and add points to image
-						xyzCount = Table.size;
-						Table.sort("ID");
-						Table.update;
-						for (j = 0; j < xyzCount; j++) {
-							id = Table.get("ID", j);
-							Table.set("SynapseStatus", j, "TBD");
-							Table.set("TerminalStatus", j, "TBD");
-							Table.set("PillarModiolarStatus", j, "TBD");
-							xPos = (Table.get("Position X (voxels)", j));
-							yPos = (Table.get("Position Y (voxels)", j));
-							zPos = (Table.get("Position Z (voxels)", j));
-							Table.update;
-							// ANNOTATE MAX PROJECTION
-							makePoint(xPos, yPos, "small yellow dot add");
-							setFont("SansSerif",10, "antiliased");
-						    setColor(255, 255, 255);
-							drawString(id, xPos, yPos);
-						}
-						// Save the updated Batch Master
-						Table.save(batchpath+sdAna+imName+".XYZ."+xyzFiles[i]+".csv");
-						// Save the annotated MPI
-						save(batchpath+sdAM+imName+".AnnMPI."+xyzFiles[i]+".png");
-						// Rescale the image for visualization and summary image generation
-						// . Get the dimensions of the image
-						getDimensions(width, height, channels, slices, frames);
-						// . Calculate the scaling factor and output dimensions
-						//scaleF = round(annImW/width);
-						outputW = scaleF*width;
-						outputH = scaleF*height;
-						// .  Scale the annotated image
-						run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+" interpolation=Bilinear average create");
-						save(batchpath+sdAM+imName+".AnnMPI."+xyzFiles[i]+".png");
-						// . Ask the user to verify that the XYZ data matches the image
-						choiceArray = newArray("Yes", "No");
-						Dialog.create("Checkin");
-						Dialog.addRadioButtonGroup("Do these XYZ points match the image?", choiceArray, 2, 1, "Yes");
-						Dialog.show();
-						match = Dialog.getRadioButton();
-						close("*");
-						close("*.csv");
-					}
-				}
-			// 4. Update Batch Master to indicate initialization as complete
-			Table.open(batchpath+sdAna+fBM);
-			Table.set("ImInitialized?", imIndex, "Yes");
-			Table.set("AvailXYZData", imIndex, adXYZ);
+		}else if(File.exists(pTSxyz)){ 
+			adXYZ ="Only Post-";
+			xyzFCount = 1;
+			xyzFiles = newArray("PostSyn");
+		}else{
+			adXYZ ="None";
+		}
+		// . Update information about the analysis for this image
+		Table.open(batchpath+sdAna+fBM);
+		Table.set("AvailXYZData", imIndex, adXYZ);
+		Table.update;
+		Table.save(batchpath+sdAna+fBM);
+		// 3.1 Initialize image 
+		if (adXYZ=="None"){
+			// . The Batch Master list needs to be updated. Easiest is to have the user restart. 
+			print(imName+" exists but does not have XYZ data associated with the image.");
+			imStatus = "Skip";
+		}else{
+			// . GET INFORMATION ABOUT THE IMAGE & WHAT TO ANALYZE
+			// . Open the image and get basic information
+			waitForUser("!Wait to click ok! When Bio-Formats opens, ensure that default settings are used,\n"+
+						"and that no boxes are checked. Do not split channels and do not autoscale.");
+			open(batchpath+sdRI+imName+imFType);
+			getVoxelSize(vxW, vxH, vxD, unit);
+			Stack.getDimensions(width, height, channels, slices, frames);
+			run("Split Channels");
+			waitForUser("!WAIT TO CLICK OK! Perform stack-wide background subtraction & brightness contrast adjustments.\n"+
+						"The adjustments set here will be used for all subsequent analysis steps.");
+			run("Merge Channels...", "c2=C1-"+imName+imFType+" c3=C2-"+imName+imFType+" c5=C3-"+imName+imFType+" c6=C4-"+imName+imFType);
+			// . Ask the user for z-slices to include
+			Dialog.create("Get Analysis Info");
+			Dialog.addMessage("Indicate the slices to include in the analysis region.");
+			Dialog.addString("Slice Start","1");
+			Dialog.addString("Slice End", slices);
+			Dialog.show();
+			slStart = Dialog.getString();
+			slEnd = Dialog.getString();
+			// . Add image information to the table
+			Table.set("ZStart", imIndex, slStart);
+			Table.set("ZEnd", imIndex, slEnd);
+			Table.set("Voxel Width (um)", imIndex, vxW);
+			Table.set("Voxel Depth (um)", imIndex, vxD);
 			Table.update;
 			Table.save(batchpath+sdAna+fBM);
 			close("*.csv");
+			// 4.2 CREATE A MAXIMUM PROJECTION OF THE IMAGE FOR ANNOTATION
+			run("Make Substack...", "slices="+slStart+"-"+slEnd);
+			save(batchpath+sdTIF+imName+".UserAdj.tif");
+			run("Z Project...", "projection=[Max Intensity]");
+			run("Make Composite");
+			run("Flatten");
+			save(batchpath+sdRM+imName+".MPI.tif");
+			close("*");
+			// 4.3 VERIFY THAT XYZ DATA MATCHES IMAGE
+			writeFile = "Yes";
+			for (i = 0; i < lengthOf(xyzFiles); i++) {
+				// *** IMPORTANT CHECK: IF SAR.XYZ FILE ALREADY EXISTS
+				if(File.exists(batchpath+sdAna+imName+".XYZ."+xyzFiles[i]+".csv")){
+					Dialog.create("Check to proceed");
+					Dialog.addString("SAR.XYZ for "+xyzFiles[i]+" has already been created.\n"+
+									 "Overwrite existing file? (Enter 'Yes' or 'No')", "No");
+					Dialog.show();
+					writeFile = Dialog.getString();
+				}
+				if(writeFile=="Yes"){
+					// Open the substack MPI -- to be annotated
+					open(batchpath+sdRM+imName+".MPI.tif");
+					// Load the raw XYZ points
+					Table.open(batchpath+sdXYZs+imName+".XYZ."+xyzFiles[i]+".csv");
+					// Save a clean version of the XYZ file to add analysis info
+					Table.save(batchpath+sdAna+imName+".XYZ."+xyzFiles[i]+".csv");
+					// Iterate through the rows of the XYZ table and add points to image
+					xyzCount = Table.size;
+					Table.sort("ID");
+					Table.update;
+					for (j = 0; j < xyzCount; j++) {
+						id = Table.get("ID", j);
+						Table.set("SynapseStatus", j, "TBD");
+						Table.set("TerminalStatus", j, "TBD");
+						Table.set("PillarModiolarStatus", j, "TBD");
+						xPos = (Table.get("Position X (voxels)", j));
+						yPos = (Table.get("Position Y (voxels)", j));
+						zPos = (Table.get("Position Z (voxels)", j));
+						Table.update;
+						// ANNOTATE MAX PROJECTION
+						makePoint(xPos, yPos, "small yellow dot add");
+						setFont("SansSerif",10, "antiliased");
+					    setColor(255, 255, 255);
+						drawString(id, xPos, yPos);
+					}
+					// Save the updated Batch Master
+					Table.save(batchpath+sdAna+imName+".XYZ."+xyzFiles[i]+".csv");
+					// Save the annotated MPI
+					save(batchpath+sdAM+imName+".AnnMPI."+xyzFiles[i]+".png");
+					// Rescale the image for visualization and summary image generation
+					// . Get the dimensions of the image
+					getDimensions(width, height, channels, slices, frames);
+					// . Calculate the scaling factor and output dimensions
+					scaleF = round((annImW/width),1);
+					outputW = scaleF*width;
+					outputH = scaleF*height;
+					// .  Scale the annotated image
+					run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+" interpolation=Bilinear average create");
+					save(batchpath+sdAM+imName+".AnnMPI."+xyzFiles[i]+".png");
+					// . Ask the user to verify that the XYZ data matches the image
+					choiceArray = newArray("Yes", "No");
+					Dialog.create("Checkin");
+					Dialog.addRadioButtonGroup("Do these XYZ points match the image?", choiceArray, 2, 1, "Yes");
+					Dialog.show();
+					match = Dialog.getRadioButton();
+					close("*");
+					close("*.csv");
+				}
 			}
 		}
 	}
+	// 4. Update Batch Master to indicate initialization as complete
+	Table.open(batchpath+sdAna+fBM);
+	Table.set("ImInitialized?", imIndex, "Yes");
+	Table.update;
+	Table.save(batchpath+sdAna+fBM);
+	close("*.csv");
+	return;
 }
 
 // GEN THUMBNAILS -- FX FOR GENERATING THUMBNAILS 
 function genThumbnails(batchpath, imName, imIndex){
+	setOption("ScaleConversions", true);
 	// 1. Get the status for this function
 	Table.open(batchpath+sdAna+fBM);
 	fxStatusTemp = Table.getString("genThumbnailsStatus", imIndex);
@@ -663,10 +651,8 @@ function genThumbnails(batchpath, imName, imIndex){
 										Table.set("CropX", l, cropX);
 										Table.set("CropY", l, cropY);
 										// Calculate and store the start and end slice numbers for the z-stack
-										//zSt = round(slZ-((tnZ/vxD)/2));
-										//zEnd = floor(slZ+((tnZ/vxD)/2));
-										zSt = slZ-zSl;
-										zEnd = slZ+zSl;
+										zSt = slZ-5;
+										zEnd = slZ+5;
 										Table.set("ZStart", l, zSt);
 										Table.set("ZEnd", l, zEnd);
 										Table.update;
@@ -674,26 +660,28 @@ function genThumbnails(batchpath, imName, imIndex){
 										selectImage(imTempName);
 										// For alternate types of project change to:
 										// "Sum Slices",  "Average Intensity", or "Max Intensity"
-										run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Sum Slices]");
+										run("Z Project...", "start="+toString(zSt)+" stop="+toString(zEnd)+" projection=[Max Intensity]");
 										run("Flatten");
 										// Crop the region around the XYX
 									    makeRectangle(cropX, cropY, (tnW/vxW), (tnH/vxW));
+									    waitForUser;
 									    run("Crop");
+									    run("16-bit");
+									    waitForUser;
 									    run("Subtract Background...", "rolling="+rbRadius);
+									    waitForUser;
 									    // . Assign LUT if Sum intensity is used--not necessary for max or average
 									    if(i==0){
 									    	if(k<(tnExtCount-1)){
-									    		run("32-bit");
 									    		run(defSynColors[k]);
 									    	}
 									    }else if(i==1){
 									    	if(k<(tnExtCount-1)){
-									    		run("32-bit");
 									    		run(defTerColors[k]);
 									    	}
 									    }
 									    // Add cross hairs for center
-										setFont("SansSerif",3, "antiliased");
+										setFont("SansSerif",10, "antiliased");
 									    setColor(255, 255, 0);
 										drawString(".", ((tnW/vxW)/2), ((tnW/vxW)/2));
 									    setFont("SansSerif",8, "antiliased");
@@ -705,7 +693,7 @@ function genThumbnails(batchpath, imName, imIndex){
 										close();
 										// For alternate types of project change to:
 										// "SUM", "AVG", or "MAX"
-										close("SUM_"+imTempName);
+										close("MAX_"+imTempName);
 									}else{
 										// XYZ is not within Z bounds
 										//Table.set("XYZinROI?", l, "No");
@@ -1162,7 +1150,7 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 								setFont("SansSerif",8, "antiliased");
 							    setColor(255, 255, 255);
 								drawString(id, xPos, yPos);
-								Table.set("PMStatus", j, "Modiolar");
+								Table.set("Pillar-ModiolarStatus", j, "Modiolar");
 								Table.update;
 								mCount++;
 							}
