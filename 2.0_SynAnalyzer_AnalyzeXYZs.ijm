@@ -1019,6 +1019,8 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 					"Then press [t] to add to the ROI Manager.\n"+
 					"Make sure the rectangle is still visible when pressing 'Ok' to proceed.");
 		Roi.getCoordinates(xpoints, ypoints);
+		Array.print(xpoints);
+		Array.print(ypoints);
 		xSt = xpoints[0];
 		xEnd = xpoints[1];
 		bbXZ = xpoints[0];
@@ -1043,87 +1045,92 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 		fxStatus = newArray(xyzFCount+1);
 		fxStatus[0]=fxStatusTemp; 
 		f = 0;
+		
+		// ---- This section was originally within the for-loop
+		// 1.4.1 Open the User Adjusted tif to generate YZ projection & create a composite
+		//   using default LUT
+		open(batchpath+sdTIF+imName+".UserAdj.tif");
+		rename(imName+imFType);
+		Stack.getDimensions(width, height, channels, slices, frames);
+		run("Split Channels");
+		for (j = 0; j < channels; j++) {
+			ch = j+1;
+			selectImage("C"+toString(ch)+"-"+imName+imFType);
+			keepOpen = "False";
+			for (k = 0; k < chCount; k++) {
+				if(chArr[k]==ch){
+					keepOpen = "True";
+				}
+			}
+			if(keepOpen=="False"){
+				close();
+			}
+		}
+		compChArr = newArray(chCount+1);
+		compChStr = "";
+		for (j = 0; j < chCount; j++) {
+			// . Create an array of image file names for calling windows
+			compChArr[j] = "C"+chArr[j]+"-"+imName+imFType;
+			// . Create string for Merge Channels argument 
+			compChStr = compChStr+defPMLUT[j]+"="+compChArr[j]+" ";
+			// . When all single channel names have been setup, add final name for comp image
+			if(j==(chCount-1)){
+				compChArr[j+1]=imName+imFType;
+			}
+		}
+		run("Merge Channels...", compChStr+" create ignore");
+		rename(imName+imFType);
+		
+		// 1.4.2 Create the YZ projection
+		makeRectangle(xSt, 0, xEnd-xSt, height);
+		run("Crop");
+		run("Reslice [/]...", "output="+vxD+" start=Left flip");
+		run("Z Project...", "projection=[Sum Slices]");
+		getPixelSize(unit, pixW, pixH);
+		run("Flatten");
+		close("\\Others");
+		// . Save a version of the image with no annotations
+		getDimensions(width, height, channels, slices, frames);
+		scaleF = round(annImW/width);
+		outputW = scaleF*width;
+		outputH = scaleF*height;
+		run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+
+			" interpolation=Bilinear average create");
+		save(batchpath+sdPM+imName+".PMMap.png");
+		close();
+		// 1.4.3 Have the user draw the p-m axis
+		setTool("line");
+		waitForUser("Draw the pillar-modilar axis across the\nbasolateral region of the hair cell.\n"+
+					"Make sure that the line is still visible before closing this window.");
+		getLine(x1, y1, x2, y2, lineWidth);
+		getDimensions(width, height, channels, slices, frames);
+		// . Find the midpoint of the line
+		xMid = (x1+x2)/2;
+		yMid = (y1+y2)/2;
+		// . Find the equation of the line
+		slope = (y2-y1)/(x2-x1);
+		int = y1-(slope*x1);
+		// . Find the equation of the perpendicular line
+		pSlope = -1/slope;
+		pInt = yMid-(pSlope*xMid);
+		// . Get the start and end points for the perpendicular line
+		xSt = 0;
+		xEnd = width;
+		ySt = pInt;
+		yEnd = (pSlope*xEnd)+pInt;
+		// 1.4.4 Add annotations to the image
+		makePoint(xMid, yMid, "small yellow hybrid add");
+		setLineWidth(3);
+		setColor("yellow");
+		drawLine(x1, y1, x2, y2);
+		setColor("white");
+		drawLine(xSt, ySt, xEnd, yEnd);
+		// ----------------------------------------------
+		
+		
 		// 1.4 Iterate through the possible XYZ data sets
 		for (i = 0; i < xyzFCount; i++) {
-			open(batchpath+sdTIF+imName+".UserAdj.tif");
-			rename(imName+imFType);
-			Stack.getDimensions(width, height, channels, slices, frames);
-			run("Split Channels");
-			for (j = 0; j < channels; j++) {
-				ch = j+1;
-				selectImage("C"+toString(ch)+"-"+imName+imFType);
-				keepOpen = "False";
-				for (k = 0; k < chCount; k++) {
-					if(chArr[k]==ch){
-						keepOpen = "True";
-					}
-				}
-				if(keepOpen=="False"){
-					close();
-				}
-			}
-			// 1.4.1 Create a composite image of the channels based on defaults
-			compChArr = newArray(chCount+1);
-			compChStr = "";
-			for (j = 0; j < chCount; j++) {
-				// . Create an array of image file names for calling windows
-				compChArr[j] = "C"+chArr[j]+"-"+imName+imFType;
-				// . Create string for Merge Channels argument 
-				compChStr = compChStr+defPMLUT[j]+"="+compChArr[j]+" ";
-				// . When all single channel names have been setup, add final name for comp image
-				if(j==(chCount-1)){
-					compChArr[j+1]=imName+imFType;
-				}
-			}
-			run("Merge Channels...", compChStr+" create ignore");
-			rename(imName+imFType);
-			// 1.4.2 Create the YZ projection
-			makeRectangle(xSt, 0, xEnd-xSt, height);
-			run("Crop");
-			run("Reslice [/]...", "output="+vxD+" start=Left flip");
-			run("Z Project...", "projection=[Sum Slices]");
-			getPixelSize(unit, pixW, pixH);
-			run("Flatten");
-			close("\\Others");
-			// . Save a version of the image with no annotations
-			getDimensions(width, height, channels, slices, frames);
-			// . Calculate the scaling factor and output dimensions
-			scaleF = round(annImW/width);
-			outputW = scaleF*width;
-			outputH = scaleF*height;
-			// .  Scale the annotated image
-			run("Scale...", "x="+scaleF+" y="+scaleF+" width="+outputW+" height="+outputH+
-				" interpolation=Bilinear average create");
-			// . Save the annotated image
-			save(batchpath+sdPM+imName+".PMMap."+availXYZ[i]+".png");
-			close();
-			// 1.4.3 Have the user draw the p-m axis
-			setTool("line");
-			waitForUser("Draw the pillar-modilar axis across the\nbasolateral region of the hair cell.\n"+
-						"Make sure that the line is still visible before closing this window.");
-			getLine(x1, y1, x2, y2, lineWidth);
-			getDimensions(width, height, channels, slices, frames);
-			// . Find the midpoint of the line
-			xMid = (x1+x2)/2;
-			yMid = (y1+y2)/2;
-			// . Find the equation of the line
-			slope = (y2-y1)/(x2-x1);
-			int = y1-(slope*x1);
-			// . Find the equation of the perpendicular line
-			pSlope = -1/slope;
-			pInt = yMid-(pSlope*xMid);
-			// . Get the start and end points for the perpendicular line
-			xSt = 0;
-			xEnd = width;
-			ySt = pInt;
-			yEnd = (pSlope*xEnd)+pInt;
-			// 1.4.4 Add annotations to the image
-			makePoint(xMid, yMid, "small yellow hybrid add");
-			setLineWidth(3);
-			setColor("yellow");
-			drawLine(x1, y1, x2, y2);
-			setColor("white");
-			drawLine(xSt, ySt, xEnd, yEnd);
+			selectWindow("SUM_Reslice of "+imName+"-1"+imFType);	
 			// 1.4.5 Iterate through the XYZs and assign P-M status based on position above or below the 
 			// . the apical-basal axis. 
 			Table.open(batchpath+sdAna+imName+".XYZ."+availXYZ[i]+".csv");
@@ -1148,8 +1155,13 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 							yPos = height-(Table.get("Position Z", j))/pixH;
 							// Now we determine if it's above or below the AB-axis
 							if(yPos > ((pSlope*xPos)+pInt)){
+								if(i==01){
+									ptColor = "cyan";
+								}else{
+									ptColor = "purple";
+								}
 								// Add an annotation to the MPI for verification purposes
-								makePoint(xPos, yPos, "medium yellow dot add");
+								makePoint(xPos, yPos, "medium "+ptColor+" dot add");
 								setFont("SansSerif",8, "antiliased");
 							    setColor(255, 255, 255);
 								drawString(id, xPos, yPos);
@@ -1157,8 +1169,13 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 								Table.update;
 								pCount++;
 							}else{
+								if(i==01){
+									ptColor = "green";
+								}else{
+									ptColor = "pink";
+								}
 								// Add an annotation to the MPI for verification purposes
-								makePoint(xPos, yPos, "medium white dot add");
+								makePoint(xPos, yPos, "medium "+ptColor+" dot add");
 								setFont("SansSerif",8, "antiliased");
 							    setColor(255, 255, 255);
 								drawString(id, xPos, yPos);
@@ -1182,7 +1199,7 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 				" interpolation=Bilinear average create");
 			// . Save the annotated image
 			save(batchpath+sdPM+imName+".AnnPMMap."+availXYZ[i]+".png");
-			close("*");	
+			close(imName+".AnnPMMap."+availXYZ[i]+".png");
 			close("*.csv");
 			// Add counts to Batch Master
 			Table.open(batchpath+sdAna+fBM);
@@ -1202,4 +1219,5 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 	Table.save(batchpath+sdAna+fBM);
 	close("*.csv");
 	}
+	close("*");
 }
