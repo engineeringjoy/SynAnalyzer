@@ -33,7 +33,7 @@
 */
 // *** USER PRESETS ***
 // Default batch path
-defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/FromCollaborators/Copeland2024/Ntng1NIHL_2023/";
+defBP = "/Users/joyfranco/Partners HealthCare Dropbox/Joy Franco/JF_Shared/Data/WSS/BatchAnalysis/SynAnalyzer_BclwTGAging/";
 // Subdirectory folder names 
 sdXYZs = "XYZCSVs/";
 sdMD = "Metadata/";
@@ -53,8 +53,8 @@ fBM = "SynAnalyzerBatchMaster.csv";
 tnW = 2;
 tnH = 2;
 tnZ = 1.5;
-vxW = 0.0248;
-vxD = 0.31;
+vxW = 0.0495;
+vxD = 0.34;
 zSl = 4;
 // Annotated Image Size - Currently based on the output width of the SynArray
 annImW = 1650;
@@ -78,16 +78,18 @@ cols = lengthOf(bmCols);
 // Default channel arrays for analysis
 //    Not sure yet if the order here matters (i.e., if pre syn needs to be listed first but guessing it should match
 //     LUT assignement below
-defSynCh="[3,1]";
-defTerCh="[2,1]";
+// There's a weird issue here where the code saves the adjusted tiff in a channel order that may not match the original one
+// . for Bclw Aging the pre and post syn channels end up being 1 & 3
+defSynCh="[1,3]";
+defTerCh="[2]";
 // Default LUT assignments for thumbnails: c2 = green, c5 = cyan, c6 = magenta, c7 = yellow
 defSynLUT = newArray("c2","c6");
-defTerLUT = newArray("c5","c6");
+defTerLUT = newArray("c3");
 // LUT to use for max projection -- we keep the LUTs the same for types of markers 
 // .   Hair cell => blue => c3; Presyn => green => c2; Postsyn => magenta => c6; Terminal => yellow = c7
 // .   Ntng1 CHs: HC => C4; CtBP2 => C3; Homer1 => C1; tdTOM => C2;
-defMPILUT = newArray("c3","c2","c6","c7");
-defMPICH = newArray("C4","C3","C1","C2");
+defMPILUT = newArray("c7","c2","c3","c6"); // LUT to use for each channel when making the max projection
+defMPICH = newArray("C1","C2","C3","C4");  // paired channel name for the LUT above
 // Default extensions to add to thumbnails when saving
 defTNExt = newArray("C1", "C2", "Comp");
 tnExtCount = lengthOf(defTNExt);
@@ -95,9 +97,9 @@ tnExtCount = lengthOf(defTNExt);
 defSynColors = newArray("Green", "Magenta");
 defTerColors = newArray("Cyan", "Magenta");
 // Default channels for pillar-modiolar mapping
-defPMCh = "[2,4]";
+defPMCh = "[3,4]";
 // Default LUT for pillar-modiolar mapping
-defPMLUT = newArray("c3","c7");
+defPMLUT = newArray("c2","c3");
 
 // *** HOUSEKEEPING ***
 run("Close All");
@@ -612,6 +614,7 @@ function genThumbnails(batchpath, imName, imIndex){
 						for (l = 0; l < lengthOf(chArr); l++) {
 							if(chArr[l]==ch){
 								keepOpen = "True";
+								print(ch);
 							}
 						}
 						if(keepOpen=="False"){
@@ -1165,9 +1168,9 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 								setFont("SansSerif",8, "antiliased");
 							    setColor(255, 255, 255);
 								drawString(id, xPos, yPos);
-								Table.set("PMStatus", j, "Pillar");
+								Table.set("PMStatus", j, "Modiolar");
 								Table.update;
-								pCount++;
+								mCount++;
 							}else{
 								if(i==01){
 									ptColor = "green";
@@ -1179,9 +1182,9 @@ function mapPillarModiolar(batchpath, imName, imIndex){
 								setFont("SansSerif",8, "antiliased");
 							    setColor(255, 255, 255);
 								drawString(id, xPos, yPos);
-								Table.set("PMStatus", j, "Modiolar");
+								Table.set("PMStatus", j, "Pillar");
 								Table.update;
-								mCount++;
+								pCount++;
 							}
 						}
 					}
